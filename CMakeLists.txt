@@ -37,6 +37,19 @@ add_executable(${CMAKE_PROJECT_NAME})
 # Add STM32CubeMX generated sources
 add_subdirectory(cmake/stm32cubemx)
 
+# 设置 FreeRTOS 源文件
+set(FreeRTOS_Src
+    ${CMAKE_CURRENT_SOURCE_DIR}/FreeRTOS/source/croutine.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/FreeRTOS/source/event_groups.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/FreeRTOS/source/list.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/FreeRTOS/source/queue.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/FreeRTOS/source/stream_buffer.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/FreeRTOS/source/tasks.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/FreeRTOS/source/timers.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/FreeRTOS/portable/MemMang/heap_4.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/FreeRTOS/portable/ARM_CM4F/port.c
+)
+
 # Link directories setup
 target_link_directories(${CMAKE_PROJECT_NAME} PRIVATE
     # Add user defined library search paths
@@ -47,9 +60,14 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     # Add user sources here
 )
 
+target_sources(${CMAKE_PROJECT_NAME} PRIVATE ${FreeRTOS_Src})
+
 # Add include paths
 target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
     # Add user defined include paths
+    ${CMAKE_CURRENT_SOURCE_DIR}/FreeRTOS/portable/ARM_CM4F
+    ${CMAKE_CURRENT_SOURCE_DIR}/FreeRTOS/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/FreeRTOS
 )
 
 # Add project symbols (macros)
