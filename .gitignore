@@ -1,0 +1,48 @@
+# CMake / Ninja build output
+/build/
+/cmake-build-*/
+/out/
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+compile_commands.json
+Makefile
+build.ninja
+.ninja_deps
+.ninja_log
+
+# Embedded firmware build artifacts
+*.elf
+*.hex
+*.bin
+*.map
+*.list
+*.lst
+*.o
+*.obj
+*.a
+*.d
+*.su
+*.crf
+*.dep
+
+# STM32CubeIDE / Eclipse user metadata
+/.settings/
+/.project
+/.cproject
+
+# Local project memory (keep planning/context out of the repository)
+/AGENTS.md
+
+# Debugger and tool-generated files
+*.launch
+*.log
+*.bak
+*.tmp
+
+# Editor / OS temporary files
+*~
+*.swp
+*.swo
+.DS_Store
+Thumbs.db

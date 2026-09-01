@@ -1,0 +1,37 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Build",
+            "type": "shell",
+            "command": "python3",
+            "args": [
+                ".scripts/build.py"
+            ]
+        },
+        {
+            "label": "Flash",
+            "type": "shell",
+            "command": "python3",
+            "args": [
+                ".scripts/flash.py"
+            ]
+        },
+        {
+            "label": "Build & Flash",
+            "dependsOrder": "sequence",
+            "dependsOn": [
+                "Build",
+                "Flash"
+            ]
+        },
+        {
+            "label": "Cls-Build",
+            "type": "shell",
+            "command": "python3",
+            "args": [
+                ".scripts/cls-build.py"
+            ]
+        }
+    ]
+}
