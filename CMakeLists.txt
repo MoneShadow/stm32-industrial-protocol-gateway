@@ -58,6 +58,7 @@ target_link_directories(${CMAKE_PROJECT_NAME} PRIVATE
 # Add sources to executable
 target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     # Add user sources here
+    ${CMAKE_CURRENT_SOURCE_DIR}/app/src/app.c
 )
 
 target_sources(${CMAKE_PROJECT_NAME} PRIVATE ${FreeRTOS_Src})
@@ -68,6 +69,7 @@ target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/FreeRTOS/portable/ARM_CM4F
     ${CMAKE_CURRENT_SOURCE_DIR}/FreeRTOS/include
     ${CMAKE_CURRENT_SOURCE_DIR}/FreeRTOS
+    ${CMAKE_CURRENT_SOURCE_DIR}/app/inc
 )
 
 # Add project symbols (macros)
