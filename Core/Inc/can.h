@@ -36,11 +36,21 @@ extern CAN_HandleTypeDef hcan1;
 
 /* USER CODE BEGIN Private defines */
 
+typedef struct {
+  uint16_t id;
+  uint8_t  dlc;
+  uint8_t  data[8];
+} CAN_Frame;
+
 /* USER CODE END Private defines */
 
 void MX_CAN1_Init(void);
 
 /* USER CODE BEGIN Prototypes */
+
+void CAN1_FilterBank_Init(void);
+void CAN1_RxDATA(uint8_t *RxDATA);
+void CAN1_TxDATA(uint8_t *TxDATA, uint8_t len);
 
 /* USER CODE END Prototypes */
 

@@ -16,6 +16,10 @@
   *
   ******************************************************************************
   */
+#include "FreeRTOS.h"
+#include "task.h"
+#include "queue.h"
+#include "app.h"
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "can.h"
@@ -54,6 +58,12 @@ void MX_CAN1_Init(void)
     Error_Handler();
   }
   /* USER CODE BEGIN CAN1_Init 2 */
+
+  CAN1_FilterBank_Init();
+  HAL_CAN_ActivateNotification(&hcan1, CAN_IT_RX_FIFO0_MSG_PENDING);
+  if (HAL_CAN_Start(&hcan1) != HAL_OK) {
+    Error_Handler();
+  }
 
   /* USER CODE END CAN1_Init 2 */
 
@@ -118,6 +128,59 @@ void HAL_CAN_MspDeInit(CAN_HandleTypeDef* canHandle)
 }
 
 /* USER CODE BEGIN 1 */
+
+/* filter configuration */
+void CAN1_FilterBank_Init(void) {
+  CAN_FilterTypeDef CAN1_FilterBank1 = {0};
+  CAN1_FilterBank1.FilterBank = 0;
+  CAN1_FilterBank1.FilterScale = CAN_FILTERSCALE_32BIT;
+  CAN1_FilterBank1.FilterMode = CAN_FILTERMODE_IDMASK;
+  CAN1_FilterBank1.FilterFIFOAssignment = CAN_FILTER_FIFO0;
+  CAN1_FilterBank1.FilterIdHigh = 0x0000;
+  CAN1_FilterBank1.FilterIdLow = 0x0000;
+  CAN1_FilterBank1.FilterMaskIdHigh = 0x0000;
+  CAN1_FilterBank1.FilterMaskIdLow = 0x0000;
+  CAN1_FilterBank1.SlaveStartFilterBank = 14;
+  CAN1_FilterBank1.FilterActivation = CAN_FILTER_ENABLE;
+  if (HAL_CAN_ConfigFilter(&hcan1, &CAN1_FilterBank1) != HAL_OK) {
+    Error_Handler();
+  }
+}
+
+/* Transmit */
+CAN_TxHeaderTypeDef CAN1_TxHeader1;
+void CAN1_TxDATA(uint8_t *TxDATA, uint8_t len) {
+  uint32_t pTxMailboxNum;
+  CAN1_TxHeader1.RTR = CAN_RTR_DATA;
+  CAN1_TxHeader1.IDE = CAN_ID_STD;
+  CAN1_TxHeader1.StdId = 0x123;
+  CAN1_TxHeader1.ExtId = 0x12345673;
+  CAN1_TxHeader1.DLC = len;
+  if (HAL_CAN_AddTxMessage(&hcan1, &CAN1_TxHeader1, TxDATA, &pTxMailboxNum) != HAL_OK) {
+    Error_Handler();
+  }
+}
+
+/* Receive */
+CAN_RxHeaderTypeDef CAN1_RxHeader1;
+void CAN1_RxDATA(uint8_t *RxDATA) {
+  if (HAL_CAN_GetRxMessage(&hcan1, CAN_RX_FIFO0, &CAN1_RxHeader1, RxDATA) != HAL_OK) {
+    Error_Handler();
+  }
+}
+
+/* Received Message Callback */
+void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan) {
+  if (hcan->Instance == CAN1) {
+    CAN_Frame data1 = {0};
+    CAN1_RxDATA(data1.data);
+    data1.id = CAN1_RxHeader1.StdId;
+    data1.dlc = CAN1_RxHeader1.DLC;
+    BaseType_t pxHigherPriority = pdFALSE;
+    xQueueSendFromISR(queue1, &data1, &pxHigherPriority);
+    portYIELD_FROM_ISR(pxHigherPriority);
+  }
+}
 
 /* USER CODE END 1 */
 
