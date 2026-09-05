@@ -36,8 +36,8 @@ void app(void) {
     /* Create A Queue for the CAN1Rx to use */
     queue1 = xQueueCreate(8, sizeof(CAN_Frame));
 
-    uint8_t TxData[8] = {1, 2, 3, 4, 5 ,6 ,7, 8};
-    CAN1_TxDATA(TxData, sizeof(TxData));
+    // uint8_t TxData[8] = {1, 2, 3, 4, 5 ,6 ,7, 8};
+    // CAN1_TxDATA(TxData, sizeof(TxData));
 
     /* Creare Tasks */
     xTaskCreate(Task1, "Task1", 128, NULL, 1, NULL);

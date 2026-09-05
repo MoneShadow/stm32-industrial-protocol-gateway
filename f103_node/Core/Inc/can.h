@@ -42,6 +42,10 @@ void MX_CAN_Init(void);
 
 /* USER CODE BEGIN Prototypes */
 
+void CAN1_FilterBank_Init(void);
+void CAN1_RxDATA(uint8_t *RxDATA);
+void CAN1_TxDATA(uint8_t *TxDATA, uint8_t len);
+
 /* USER CODE END Prototypes */
 
 #ifdef __cplusplus

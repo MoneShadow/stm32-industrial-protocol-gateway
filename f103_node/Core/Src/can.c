@@ -55,6 +55,11 @@ void MX_CAN_Init(void)
   }
   /* USER CODE BEGIN CAN_Init 2 */
 
+  CAN1_FilterBank_Init();
+  if (HAL_CAN_Start(&hcan) != HAL_OK) {
+    Error_Handler();
+  }
+
   /* USER CODE END CAN_Init 2 */
 
 }
@@ -121,6 +126,46 @@ void HAL_CAN_MspDeInit(CAN_HandleTypeDef* canHandle)
 }
 
 /* USER CODE BEGIN 1 */
+
+/* filter configuration */
+void CAN1_FilterBank_Init(void) {
+  CAN_FilterTypeDef CAN1_FilterBank1 = {0};
+  CAN1_FilterBank1.FilterBank = 0;
+  CAN1_FilterBank1.FilterScale = CAN_FILTERSCALE_32BIT;
+  CAN1_FilterBank1.FilterMode = CAN_FILTERMODE_IDMASK;
+  CAN1_FilterBank1.FilterFIFOAssignment = CAN_FILTER_FIFO0;
+  CAN1_FilterBank1.FilterIdHigh = 0x0000;
+  CAN1_FilterBank1.FilterIdLow = 0x0000;
+  CAN1_FilterBank1.FilterMaskIdHigh = 0x0000;
+  CAN1_FilterBank1.FilterMaskIdLow = 0x0000;
+  CAN1_FilterBank1.SlaveStartFilterBank = 14;
+  CAN1_FilterBank1.FilterActivation = CAN_FILTER_ENABLE;
+  if (HAL_CAN_ConfigFilter(&hcan, &CAN1_FilterBank1) != HAL_OK) {
+    Error_Handler();
+  }
+}
+
+/* Transmit */
+CAN_TxHeaderTypeDef CAN1_TxHeader1;
+void CAN1_TxDATA(uint8_t *TxDATA, uint8_t len) {
+  uint32_t pTxMailboxNum;
+  CAN1_TxHeader1.RTR = CAN_RTR_DATA;
+  CAN1_TxHeader1.IDE = CAN_ID_STD;
+  CAN1_TxHeader1.StdId = 0x123;
+  CAN1_TxHeader1.ExtId = 0x12345673;
+  CAN1_TxHeader1.DLC = len;
+  if (HAL_CAN_AddTxMessage(&hcan, &CAN1_TxHeader1, TxDATA, &pTxMailboxNum) != HAL_OK) {
+    Error_Handler();
+  }
+}
+
+/* Receive */
+CAN_RxHeaderTypeDef CAN1_RxHeader1;
+void CAN1_RxDATA(uint8_t *RxDATA) {
+  if (HAL_CAN_GetRxMessage(&hcan, CAN_RX_FIFO0, &CAN1_RxHeader1, RxDATA) != HAL_OK) {
+    Error_Handler();
+  }
+}
 
 /* USER CODE END 1 */
 
