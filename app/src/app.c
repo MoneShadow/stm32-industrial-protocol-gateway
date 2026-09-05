@@ -32,6 +32,15 @@ void CAN_RxDataTransmit(void *pvParameters) {
     }
 }
 
+uint32_t commandnum = 0;
+
+void Ctrl_Command(void *pvParameters) {
+    while (1) {
+        CAN1_Ctrl(0x01, 1000, commandnum++);
+        vTaskDelay(pdMS_TO_TICKS(1000));
+    }
+}
+
 void app(void) {
     /* Create A Queue for the CAN1Rx to use */
     queue1 = xQueueCreate(8, sizeof(CAN_Frame));
@@ -41,7 +50,8 @@ void app(void) {
 
     /* Creare Tasks */
     xTaskCreate(Task1, "Task1", 128, NULL, 1, NULL);
-    xTaskCreate(CAN_RxDataTransmit, "CAN_RxDataTransmit", 128, NULL, 1, NULL);
+    xTaskCreate(CAN_RxDataTransmit, "CAN_RxDataTransmit", 128, NULL, 2, NULL);
+    xTaskCreate(Ctrl_Command, "Ctrl_Command", 128, NULL, 2, NULL);
 
     /* Start the Schedular */
     vTaskStartScheduler();

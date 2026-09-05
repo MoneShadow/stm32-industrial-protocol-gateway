@@ -99,11 +99,8 @@ int main(void)
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
 
-  uint8_t TxData[8] = {1, 2, 3, 4, 5, 6, 7, 8};
   while (1)
   {
-    CAN1_TxDATA(TxData, 8);
-    HAL_Delay(1000);
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */

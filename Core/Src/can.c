@@ -161,6 +161,26 @@ void CAN1_TxDATA(uint8_t *TxDATA, uint8_t len) {
   }
 }
 
+/* Control Frame */
+CAN_TxHeaderTypeDef Ctrl_Header;
+void CAN1_Ctrl(uint8_t command_code, uint16_t rpm, uint32_t command_num) {
+  uint32_t pTxMailboxNum;
+  uint8_t data[8], i;
+  Ctrl_Header.RTR = CAN_RTR_DATA;
+  Ctrl_Header.IDE = CAN_ID_STD;
+  Ctrl_Header.StdId = 0x301;
+  Ctrl_Header.ExtId = 0x12345301;
+  Ctrl_Header.DLC = 8;
+  data[0] = command_code;                     // command_code
+  data[1] = rpm & 0x00FF;                     // rpm Lowbytevalue
+  data[2] = ((rpm & 0xFF00) >> 8);            // rpm Highbytevalue
+  data[3] = command_num;                      // command_num
+  for (i = 0; i < 4; i++) data[4 + i] = 0;    // saved bit
+  if (HAL_CAN_AddTxMessage(&hcan1, &Ctrl_Header, data, &pTxMailboxNum) != HAL_OK) {
+    Error_Handler();
+  }
+}
+
 /* Receive */
 CAN_RxHeaderTypeDef CAN1_RxHeader1;
 void CAN1_RxDATA(uint8_t *RxDATA) {

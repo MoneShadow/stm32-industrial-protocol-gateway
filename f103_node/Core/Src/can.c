@@ -56,6 +56,7 @@ void MX_CAN_Init(void)
   /* USER CODE BEGIN CAN_Init 2 */
 
   CAN1_FilterBank_Init();
+  HAL_CAN_ActivateNotification(&hcan, CAN_IT_RX_FIFO0_MSG_PENDING);
   if (HAL_CAN_Start(&hcan) != HAL_OK) {
     Error_Handler();
   }
@@ -134,9 +135,9 @@ void CAN1_FilterBank_Init(void) {
   CAN1_FilterBank1.FilterScale = CAN_FILTERSCALE_32BIT;
   CAN1_FilterBank1.FilterMode = CAN_FILTERMODE_IDMASK;
   CAN1_FilterBank1.FilterFIFOAssignment = CAN_FILTER_FIFO0;
-  CAN1_FilterBank1.FilterIdHigh = 0x0000;
+  CAN1_FilterBank1.FilterIdHigh = 0x301 << 5;
   CAN1_FilterBank1.FilterIdLow = 0x0000;
-  CAN1_FilterBank1.FilterMaskIdHigh = 0x0000;
+  CAN1_FilterBank1.FilterMaskIdHigh = 0x7FF << 5;
   CAN1_FilterBank1.FilterMaskIdLow = 0x0000;
   CAN1_FilterBank1.SlaveStartFilterBank = 14;
   CAN1_FilterBank1.FilterActivation = CAN_FILTER_ENABLE;
@@ -159,11 +160,52 @@ void CAN1_TxDATA(uint8_t *TxDATA, uint8_t len) {
   }
 }
 
+/* ACK Frame */
+CAN_TxHeaderTypeDef ACK_Header;
+void CAN1_ACK(uint8_t command_code, uint8_t res, uint32_t command_num) {
+  ACK_Header.RTR = CAN_RTR_DATA;
+  ACK_Header.IDE = CAN_ID_STD;
+  ACK_Header.StdId = 0x401;
+  ACK_Header.ExtId = 0x12345401;
+  ACK_Header.DLC = 3;
+  uint8_t data[8];
+  uint32_t pTxMailboxNum;
+  data[0] = command_code;
+  data[1] = res;
+  data[2] = command_num;
+  if (HAL_CAN_AddTxMessage(&hcan, &ACK_Header, data, &pTxMailboxNum) != HAL_OK) {
+    Error_Handler();
+  }
+}
+
 /* Receive */
 CAN_RxHeaderTypeDef CAN1_RxHeader1;
 void CAN1_RxDATA(uint8_t *RxDATA) {
   if (HAL_CAN_GetRxMessage(&hcan, CAN_RX_FIFO0, &CAN1_RxHeader1, RxDATA) != HAL_OK) {
     Error_Handler();
+  }
+}
+
+/* Received Message Callback */
+void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan) {
+  if (hcan->Instance == CAN1) {
+    CAN_Frame data1 = {0};
+    CAN1_RxDATA(data1.data);
+    data1.id = CAN1_RxHeader1.StdId;
+    data1.dlc = CAN1_RxHeader1.DLC;
+    if (CAN1_RxHeader1.IDE == 0) {
+      if (data1.data[0] == 0x01) {  // set rpm
+        uint8_t command_code = data1.data[0];
+        uint8_t rpmlow = data1.data[1];
+        uint8_t rpmhigh = data1.data[2];
+        uint16_t rpm = (rpmhigh << 8) | rpmlow;
+        if (rpm == 1000) {
+          HAL_GPIO_TogglePin(LED_TEST_GPIO_Port, LED_TEST_Pin);
+        }
+        uint32_t command_num = data1.data[3];
+        CAN1_ACK(command_code, 0x00, command_num);
+      }
+    }
   }
 }
 

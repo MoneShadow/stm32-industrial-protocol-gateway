@@ -36,6 +36,12 @@ extern CAN_HandleTypeDef hcan;
 
 /* USER CODE BEGIN Private defines */
 
+typedef struct {
+  uint16_t id;
+  uint8_t  dlc;
+  uint8_t  data[8];
+} CAN_Frame;
+
 /* USER CODE END Private defines */
 
 void MX_CAN_Init(void);

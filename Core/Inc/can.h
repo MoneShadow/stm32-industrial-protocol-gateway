@@ -51,6 +51,7 @@ void MX_CAN1_Init(void);
 void CAN1_FilterBank_Init(void);
 void CAN1_RxDATA(uint8_t *RxDATA);
 void CAN1_TxDATA(uint8_t *TxDATA, uint8_t len);
+void CAN1_Ctrl(uint8_t command_code, uint16_t rpm, uint32_t command_num);
 
 /* USER CODE END Prototypes */
 
