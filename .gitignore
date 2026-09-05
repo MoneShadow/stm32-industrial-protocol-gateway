@@ -1,5 +1,6 @@
 # CMake / Ninja build output
 /build/
+**/build/
 /cmake-build-*/
 /out/
 CMakeFiles/
