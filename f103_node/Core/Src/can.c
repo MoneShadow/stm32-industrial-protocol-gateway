@@ -174,7 +174,7 @@ void CAN1_ACK(uint8_t command_code, uint8_t res, uint32_t command_num) {
   data[1] = res;
   data[2] = command_num;
   if (HAL_CAN_AddTxMessage(&hcan, &ACK_Header, data, &pTxMailboxNum) != HAL_OK) {
-    Error_Handler();
+
   }
 }
 
