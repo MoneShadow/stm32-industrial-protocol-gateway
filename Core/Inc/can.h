@@ -42,6 +42,13 @@ typedef struct {
   uint8_t  data[8];
 } CAN_Frame;
 
+typedef struct {
+  CAN_TxHeaderTypeDef CommandHeader;
+  uint8_t  data[8];
+} Ctrl_Frame;
+
+extern volatile uint32_t HeartTime;
+
 /* USER CODE END Private defines */
 
 void MX_CAN1_Init(void);
@@ -49,9 +56,11 @@ void MX_CAN1_Init(void);
 /* USER CODE BEGIN Prototypes */
 
 void CAN1_FilterBank_Init(void);
-void CAN1_RxDATA(uint8_t *RxDATA);
+void CAN1_RxDATA_FIFO0(CAN_Frame *data);
+void CAN1_RxDATA_FIFO1(CAN_Frame *data);
 void CAN1_TxDATA(uint8_t *TxDATA, uint8_t len);
 void CAN1_Ctrl(uint8_t command_code, uint16_t rpm, uint32_t command_num);
+Ctrl_Frame register_rpm_command(uint16_t rpm, uint32_t command_num);
 
 /* USER CODE END Prototypes */
 

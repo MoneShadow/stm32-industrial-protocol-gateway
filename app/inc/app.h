@@ -4,8 +4,10 @@
 #include "FreeRTOS.h"
 #include "task.h"
 #include "queue.h"
+#include "semphr.h"
 
-extern QueueHandle_t queue1;
+extern QueueHandle_t queue_feedback_rpm;
+extern volatile uint8_t tx_in_flight;
 
 void app(void);
 

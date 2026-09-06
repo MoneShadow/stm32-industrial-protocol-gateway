@@ -61,9 +61,8 @@ void MX_CAN1_Init(void)
 
   CAN1_FilterBank_Init();
   HAL_CAN_ActivateNotification(&hcan1, CAN_IT_RX_FIFO0_MSG_PENDING);
-  if (HAL_CAN_Start(&hcan1) != HAL_OK) {
-    Error_Handler();
-  }
+  HAL_CAN_ActivateNotification(&hcan1, CAN_IT_RX_FIFO1_MSG_PENDING);
+  HAL_CAN_ActivateNotification(&hcan1, CAN_IT_TX_MAILBOX_EMPTY);
 
   /* USER CODE END CAN1_Init 2 */
 
@@ -94,8 +93,12 @@ void HAL_CAN_MspInit(CAN_HandleTypeDef* canHandle)
     HAL_GPIO_Init(GPIOD, &GPIO_InitStruct);
 
     /* CAN1 interrupt Init */
+    HAL_NVIC_SetPriority(CAN1_TX_IRQn, 9, 0);
+    HAL_NVIC_EnableIRQ(CAN1_TX_IRQn);
     HAL_NVIC_SetPriority(CAN1_RX0_IRQn, 9, 0);
     HAL_NVIC_EnableIRQ(CAN1_RX0_IRQn);
+    HAL_NVIC_SetPriority(CAN1_RX1_IRQn, 9, 0);
+    HAL_NVIC_EnableIRQ(CAN1_RX1_IRQn);
   /* USER CODE BEGIN CAN1_MspInit 1 */
 
   /* USER CODE END CAN1_MspInit 1 */
@@ -120,7 +123,9 @@ void HAL_CAN_MspDeInit(CAN_HandleTypeDef* canHandle)
     HAL_GPIO_DeInit(GPIOD, GPIO_PIN_0|GPIO_PIN_1);
 
     /* CAN1 interrupt Deinit */
+    HAL_NVIC_DisableIRQ(CAN1_TX_IRQn);
     HAL_NVIC_DisableIRQ(CAN1_RX0_IRQn);
+    HAL_NVIC_DisableIRQ(CAN1_RX1_IRQn);
   /* USER CODE BEGIN CAN1_MspDeInit 1 */
 
   /* USER CODE END CAN1_MspDeInit 1 */
@@ -133,16 +138,31 @@ void HAL_CAN_MspDeInit(CAN_HandleTypeDef* canHandle)
 void CAN1_FilterBank_Init(void) {
   CAN_FilterTypeDef CAN1_FilterBank1 = {0};
   CAN1_FilterBank1.FilterBank = 0;
-  CAN1_FilterBank1.FilterScale = CAN_FILTERSCALE_32BIT;
+  CAN1_FilterBank1.FilterScale = CAN_FILTERSCALE_16BIT;
   CAN1_FilterBank1.FilterMode = CAN_FILTERMODE_IDMASK;
   CAN1_FilterBank1.FilterFIFOAssignment = CAN_FILTER_FIFO0;
-  CAN1_FilterBank1.FilterIdHigh = 0x0000;
-  CAN1_FilterBank1.FilterIdLow = 0x0000;
-  CAN1_FilterBank1.FilterMaskIdHigh = 0x0000;
-  CAN1_FilterBank1.FilterMaskIdLow = 0x0000;
+  CAN1_FilterBank1.FilterIdHigh = 0x401 << 5;
+  CAN1_FilterBank1.FilterIdLow = 0x000 << 5;
+  CAN1_FilterBank1.FilterMaskIdHigh = 0x7FF << 5;
+  CAN1_FilterBank1.FilterMaskIdLow = 0x7FF << 5;
   CAN1_FilterBank1.SlaveStartFilterBank = 14;
   CAN1_FilterBank1.FilterActivation = CAN_FILTER_ENABLE;
   if (HAL_CAN_ConfigFilter(&hcan1, &CAN1_FilterBank1) != HAL_OK) {
+    Error_Handler();
+  }
+
+  CAN_FilterTypeDef CAN1_FilterBank2 = {0};
+  CAN1_FilterBank2.FilterBank = 1;
+  CAN1_FilterBank2.FilterScale = CAN_FILTERSCALE_16BIT;
+  CAN1_FilterBank2.FilterMode = CAN_FILTERMODE_IDMASK;
+  CAN1_FilterBank2.FilterFIFOAssignment = CAN_FILTER_FIFO1;
+  CAN1_FilterBank2.FilterIdHigh = 0x201 << 5;
+  CAN1_FilterBank2.FilterIdLow = 0x000 << 5;
+  CAN1_FilterBank2.FilterMaskIdHigh = 0x7FF << 5;
+  CAN1_FilterBank2.FilterMaskIdLow = 0x7FF << 5;
+  CAN1_FilterBank2.SlaveStartFilterBank = 14;
+  CAN1_FilterBank2.FilterActivation = CAN_FILTER_ENABLE;
+  if (HAL_CAN_ConfigFilter(&hcan1, &CAN1_FilterBank2) != HAL_OK) {
     Error_Handler();
   }
 }
@@ -162,43 +182,88 @@ void CAN1_TxDATA(uint8_t *TxDATA, uint8_t len) {
 }
 
 /* Control Frame */
-CAN_TxHeaderTypeDef Ctrl_Header;
-void CAN1_Ctrl(uint8_t command_code, uint16_t rpm, uint32_t command_num) {
-  uint32_t pTxMailboxNum;
-  uint8_t data[8], i;
-  Ctrl_Header.RTR = CAN_RTR_DATA;
-  Ctrl_Header.IDE = CAN_ID_STD;
-  Ctrl_Header.StdId = 0x301;
-  Ctrl_Header.ExtId = 0x12345301;
-  Ctrl_Header.DLC = 8;
-  data[0] = command_code;                     // command_code
-  data[1] = rpm & 0x00FF;                     // rpm Lowbytevalue
-  data[2] = ((rpm & 0xFF00) >> 8);            // rpm Highbytevalue
-  data[3] = command_num;                      // command_num
-  for (i = 0; i < 4; i++) data[4 + i] = 0;    // saved bit
-  if (HAL_CAN_AddTxMessage(&hcan1, &Ctrl_Header, data, &pTxMailboxNum) != HAL_OK) {
-    Error_Handler();
-  }
+
+/* 注册一个控制转速的命令帧 */
+Ctrl_Frame register_rpm_command(uint16_t rpm, uint32_t command_num) {
+  Ctrl_Frame rpm_command = {0};
+  rpm_command.CommandHeader.RTR = CAN_RTR_DATA;
+  rpm_command.CommandHeader.IDE = CAN_ID_STD;
+  rpm_command.CommandHeader.StdId = 0x301;
+  rpm_command.CommandHeader.ExtId = 0x12345301;
+  rpm_command.CommandHeader.DLC = 8;
+  rpm_command.data[0] = 0x01;                                     // rpm command_code
+  rpm_command.data[1] = rpm & 0x00FF;                             // rpm Lowbytevalue
+  rpm_command.data[2] = ((rpm & 0xFF00) >> 8);                    // rpm Highbytevalue
+  rpm_command.data[3] = command_num;                              // command_num
+  for (uint8_t i = 0; i < 4; i++) rpm_command.data[4 + i] = 0;    // saved bit
+  return rpm_command;
 }
 
-/* Receive */
+/* Receive FIFO0接收反馈 */
 CAN_RxHeaderTypeDef CAN1_RxHeader1;
-void CAN1_RxDATA(uint8_t *RxDATA) {
-  if (HAL_CAN_GetRxMessage(&hcan1, CAN_RX_FIFO0, &CAN1_RxHeader1, RxDATA) != HAL_OK) {
+void CAN1_RxDATA_FIFO0(CAN_Frame *data) {
+  if (HAL_CAN_GetRxMessage(&hcan1, CAN_RX_FIFO0, &CAN1_RxHeader1, data->data) != HAL_OK) {
     Error_Handler();
+  }
+  if (CAN1_RxHeader1.IDE == 0) {
+    if (CAN1_RxHeader1.StdId == 0x401) {  // ACK Frame
+      data->id = CAN1_RxHeader1.StdId;
+      data->dlc = CAN1_RxHeader1.DLC;
+      BaseType_t pxHigherPriority = pdFALSE;
+      xQueueSendFromISR(queue_feedback_rpm, data, &pxHigherPriority);
+      portYIELD_FROM_ISR(pxHigherPriority);
+    }
   }
 }
 
-/* Received Message Callback */
+/* FIFO1接收状态 */
+volatile uint32_t HeartTime = 0;
+CAN_RxHeaderTypeDef CAN1_RxHeader2;
+void CAN1_RxDATA_FIFO1(CAN_Frame *data) {
+  if (HAL_CAN_GetRxMessage(&hcan1, CAN_RX_FIFO1, &CAN1_RxHeader2, data->data) != HAL_OK) {
+    Error_Handler();
+  }
+  if (CAN1_RxHeader2.IDE == 0) {
+    if (CAN1_RxHeader2.StdId == 0x201) {  // Heart Frame
+      HeartTime = HAL_GetTick();
+    }
+  }
+}
+
+/* FIFO0 Received Message Callback */
 void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan) {
   if (hcan->Instance == CAN1) {
-    CAN_Frame data1 = {0};
-    CAN1_RxDATA(data1.data);
-    data1.id = CAN1_RxHeader1.StdId;
-    data1.dlc = CAN1_RxHeader1.DLC;
-    BaseType_t pxHigherPriority = pdFALSE;
-    xQueueSendFromISR(queue1, &data1, &pxHigherPriority);
-    portYIELD_FROM_ISR(pxHigherPriority);
+    CAN_Frame data;
+    CAN1_RxDATA_FIFO0(&data);
+  }
+}
+
+/* FIFO1 Received Message Callback */
+void HAL_CAN_RxFifo1MsgPendingCallback(CAN_HandleTypeDef *hcan) {
+  if (hcan->Instance == CAN1) {
+    CAN_Frame data;
+    CAN1_RxDATA_FIFO1(&data);
+  }
+}
+
+/* Txbox0 */
+void HAL_CAN_TxMailbox0CompleteCallback(CAN_HandleTypeDef *hcan) {
+  if (hcan->Instance == CAN1) {
+    tx_in_flight = 0;
+  }
+}
+
+/* Txbox1 */
+void HAL_CAN_TxMailbox1CompleteCallback(CAN_HandleTypeDef *hcan) {
+  if (hcan->Instance == CAN1) {
+    tx_in_flight = 0;
+  }
+}
+
+/* Txbox2 */
+void HAL_CAN_TxMailbox2CompleteCallback(CAN_HandleTypeDef *hcan) {
+  if (hcan->Instance == CAN1) {
+    tx_in_flight = 0;
   }
 }
 
