@@ -57,6 +57,7 @@ void MX_CAN_Init(void)
 
   CAN1_FilterBank_Init();
   HAL_CAN_ActivateNotification(&hcan, CAN_IT_RX_FIFO0_MSG_PENDING);
+  HAL_CAN_ActivateNotification(&hcan, CAN_IT_TX_MAILBOX_EMPTY);
   if (HAL_CAN_Start(&hcan) != HAL_OK) {
     Error_Handler();
   }
@@ -93,6 +94,8 @@ void HAL_CAN_MspInit(CAN_HandleTypeDef* canHandle)
     HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
     /* CAN1 interrupt Init */
+    HAL_NVIC_SetPriority(USB_HP_CAN1_TX_IRQn, 9, 0);
+    HAL_NVIC_EnableIRQ(USB_HP_CAN1_TX_IRQn);
     HAL_NVIC_SetPriority(USB_LP_CAN1_RX0_IRQn, 9, 0);
     HAL_NVIC_EnableIRQ(USB_LP_CAN1_RX0_IRQn);
   /* USER CODE BEGIN CAN1_MspInit 1 */
@@ -119,6 +122,7 @@ void HAL_CAN_MspDeInit(CAN_HandleTypeDef* canHandle)
     HAL_GPIO_DeInit(GPIOA, GPIO_PIN_11|GPIO_PIN_12);
 
     /* CAN1 interrupt Deinit */
+    HAL_NVIC_DisableIRQ(USB_HP_CAN1_TX_IRQn);
     HAL_NVIC_DisableIRQ(USB_LP_CAN1_RX0_IRQn);
   /* USER CODE BEGIN CAN1_MspDeInit 1 */
 
@@ -174,7 +178,7 @@ void CAN1_ACK(uint8_t command_code, uint8_t res, uint32_t command_num) {
   data[1] = res;
   data[2] = command_num;
   if (HAL_CAN_AddTxMessage(&hcan, &ACK_Header, data, &pTxMailboxNum) != HAL_OK) {
-
+    
   }
 }
 
@@ -190,7 +194,7 @@ void CAN1_Heart(uint32_t heart_num) {
   data[0] = 0x01;
   data[1] = heart_num;
   if (HAL_CAN_AddTxMessage(&hcan, &Heart_Header, data, &heartbeat_mailbox) != HAL_OK) {
-
+    
   }else {
     heartbeat_in_flight = 1;
   }
@@ -200,7 +204,7 @@ void CAN1_Heart(uint32_t heart_num) {
 CAN_RxHeaderTypeDef CAN1_RxHeader1;
 void CAN1_RxDATA(uint8_t *RxDATA) {
   if (HAL_CAN_GetRxMessage(&hcan, CAN_RX_FIFO0, &CAN1_RxHeader1, RxDATA) != HAL_OK) {
-    Error_Handler();
+    
   }
 }
 
@@ -224,6 +228,27 @@ void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan) {
         CAN1_ACK(command_code, 0x00, command_num);
       }
     }
+  }
+}
+
+/* Txbox0 */
+void HAL_CAN_TxMailbox0CompleteCallback(CAN_HandleTypeDef *hcan) {
+  if (hcan->Instance == CAN1) {
+    
+  }
+}
+
+/* Txbox1 */
+void HAL_CAN_TxMailbox1CompleteCallback(CAN_HandleTypeDef *hcan) {
+  if (hcan->Instance == CAN1) {
+    
+  }
+}
+
+/* Txbox2 */
+void HAL_CAN_TxMailbox2CompleteCallback(CAN_HandleTypeDef *hcan) {
+  if (hcan->Instance == CAN1) {
+
   }
 }
 
