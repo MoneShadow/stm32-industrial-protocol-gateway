@@ -178,6 +178,24 @@ void CAN1_ACK(uint8_t command_code, uint8_t res, uint32_t command_num) {
   }
 }
 
+/* Heartbeat Frame */
+CAN_TxHeaderTypeDef Heart_Header;
+void CAN1_Heart(uint32_t heart_num) {
+  Heart_Header.RTR = CAN_RTR_DATA;
+  Heart_Header.IDE = CAN_ID_STD;
+  Heart_Header.StdId = 0x201;
+  Heart_Header.ExtId = 0x12345201;
+  Heart_Header.DLC = 2;
+  uint8_t data[8];
+  data[0] = 0x01;
+  data[1] = heart_num;
+  if (HAL_CAN_AddTxMessage(&hcan, &Heart_Header, data, &heartbeat_mailbox) != HAL_OK) {
+
+  }else {
+    heartbeat_in_flight = 1;
+  }
+}
+
 /* Receive */
 CAN_RxHeaderTypeDef CAN1_RxHeader1;
 void CAN1_RxDATA(uint8_t *RxDATA) {

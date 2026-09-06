@@ -48,6 +48,9 @@
 
 /* USER CODE BEGIN PV */
 
+volatile uint8_t heartbeat_in_flight = 0;
+volatile uint32_t heartbeat_mailbox;
+
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -99,8 +102,19 @@ int main(void)
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
 
+  volatile static uint32_t least_tick = 0;
+  volatile static uint32_t heart_num = 0;
+  least_tick =  HAL_GetTick();
   while (1)
   {
+    if (((HAL_GetTick() - least_tick) >= 500) && !heartbeat_in_flight) {
+      least_tick = HAL_GetTick();
+      CAN1_Heart(heart_num++);
+    }
+
+    if (heartbeat_in_flight == 1 && !HAL_CAN_IsTxMessagePending(&hcan, heartbeat_mailbox)) {
+      heartbeat_in_flight = 0;
+    }
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
