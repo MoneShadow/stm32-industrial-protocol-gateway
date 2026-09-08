@@ -31,12 +31,13 @@ extern "C" {
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-extern volatile uint8_t heartbeat_in_flight;
-extern volatile uint32_t heartbeat_mailbox;
+
 /* USER CODE END Includes */
 
 /* Exported types ------------------------------------------------------------*/
 /* USER CODE BEGIN ET */
+
+extern volatile uint8_t heartbeat_in_flight;
 
 /* USER CODE END ET */
 

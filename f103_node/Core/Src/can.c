@@ -56,6 +56,7 @@ void MX_CAN_Init(void)
   /* USER CODE BEGIN CAN_Init 2 */
 
   CAN1_FilterBank_Init();
+  CAN_Frame_Register();
   HAL_CAN_ActivateNotification(&hcan, CAN_IT_RX_FIFO0_MSG_PENDING);
   HAL_CAN_ActivateNotification(&hcan, CAN_IT_TX_MAILBOX_EMPTY);
   if (HAL_CAN_Start(&hcan) != HAL_OK) {
@@ -150,52 +151,57 @@ void CAN1_FilterBank_Init(void) {
   }
 }
 
+/* 定义各种can帧 */
+volatile CAN_Frame_Tx CAN_Heartbeat_Frame;
+volatile CAN_Frame_Tx CAN_ACK_Frame;
+void CAN_Frame_Register(void) {
+  /* 从机心跳帧 */
+  CAN_Heartbeat_Frame.CAN_TxHeader.RTR = CAN_RTR_DATA;
+  CAN_Heartbeat_Frame.CAN_TxHeader.IDE = CAN_ID_STD;
+  CAN_Heartbeat_Frame.CAN_TxHeader.StdId = 0x201;
+  CAN_Heartbeat_Frame.CAN_TxHeader.ExtId = 0x12345201;
+  CAN_Heartbeat_Frame.CAN_TxHeader.DLC = 2;
+
+  /* ACK应答帧 具体数据不填写 */
+  CAN_ACK_Frame.CAN_TxHeader.RTR = CAN_RTR_DATA;
+  CAN_ACK_Frame.CAN_TxHeader.IDE = CAN_ID_STD;
+  CAN_ACK_Frame.CAN_TxHeader.StdId = 0x401;
+  CAN_ACK_Frame.CAN_TxHeader.ExtId = 0x12345401;
+  CAN_ACK_Frame.CAN_TxHeader.DLC = 3;
+}
+
 /* Transmit */
-CAN_TxHeaderTypeDef CAN1_TxHeader1;
-void CAN1_TxDATA(uint8_t *TxDATA, uint8_t len) {
-  uint32_t pTxMailboxNum;
-  CAN1_TxHeader1.RTR = CAN_RTR_DATA;
-  CAN1_TxHeader1.IDE = CAN_ID_STD;
-  CAN1_TxHeader1.StdId = 0x123;
-  CAN1_TxHeader1.ExtId = 0x12345673;
-  CAN1_TxHeader1.DLC = len;
-  if (HAL_CAN_AddTxMessage(&hcan, &CAN1_TxHeader1, TxDATA, &pTxMailboxNum) != HAL_OK) {
-    Error_Handler();
+void CAN1_TxDATA(CAN_Frame_Tx TxFrame) {
+  if (TxFrame.CAN_TxHeader.StdId == 0x401) {  // 应答帧
+    if (HAL_CAN_AddTxMessage(&hcan, &TxFrame.CAN_TxHeader, TxFrame.data, &TxFrame.mailbox) != HAL_OK) {
+      /* 发送应答失败 这个暂时不讨论 */
+    }
+  }
+  else if (TxFrame.CAN_TxHeader.StdId == 0x201) { // 心跳帧
+    if (HAL_CAN_AddTxMessage(&hcan, &TxFrame.CAN_TxHeader, TxFrame.data, &TxFrame.mailbox) != HAL_OK) {
+      /* 发送心跳失败 这个暂时不讨论 */
+    }
   }
 }
 
 /* ACK Frame */
-CAN_TxHeaderTypeDef ACK_Header;
-void CAN1_ACK(uint8_t command_code, uint8_t res, uint32_t command_num) {
-  ACK_Header.RTR = CAN_RTR_DATA;
-  ACK_Header.IDE = CAN_ID_STD;
-  ACK_Header.StdId = 0x401;
-  ACK_Header.ExtId = 0x12345401;
-  ACK_Header.DLC = 3;
-  uint8_t data[8];
-  uint32_t pTxMailboxNum;
-  data[0] = command_code;
-  data[1] = res;
-  data[2] = command_num;
-  if (HAL_CAN_AddTxMessage(&hcan, &ACK_Header, data, &pTxMailboxNum) != HAL_OK) {
-    
+void CAN_ACK(uint8_t command_code, uint8_t res, uint32_t command_num) {
+  CAN_ACK_Frame.data[0] = command_code;
+  CAN_ACK_Frame.data[1] = res;
+  CAN_ACK_Frame.data[2] = command_num;
+  if (HAL_CAN_AddTxMessage(&hcan, (const CAN_TxHeaderTypeDef *)&CAN_ACK_Frame.CAN_TxHeader, (const uint8_t *)CAN_ACK_Frame.data, (uint32_t *)&CAN_ACK_Frame.mailbox) != HAL_OK) {
+    /* 发送应答失败 这个暂时不讨论 */
   }
 }
 
 /* Heartbeat Frame */
-CAN_TxHeaderTypeDef Heart_Header;
-void CAN1_Heart(uint32_t heart_num) {
-  Heart_Header.RTR = CAN_RTR_DATA;
-  Heart_Header.IDE = CAN_ID_STD;
-  Heart_Header.StdId = 0x201;
-  Heart_Header.ExtId = 0x12345201;
-  Heart_Header.DLC = 2;
-  uint8_t data[8];
-  data[0] = 0x01;
-  data[1] = heart_num;
-  if (HAL_CAN_AddTxMessage(&hcan, &Heart_Header, data, &heartbeat_mailbox) != HAL_OK) {
+void CAN_Heart(uint32_t heart_num) {
+  CAN_Heartbeat_Frame.data[0] = 0x01;
+  CAN_Heartbeat_Frame.data[1] = heart_num;
+  if (HAL_CAN_AddTxMessage(&hcan, (const CAN_TxHeaderTypeDef *)&CAN_Heartbeat_Frame.CAN_TxHeader, (const uint8_t *)CAN_Heartbeat_Frame.data, (uint32_t *)&CAN_Heartbeat_Frame.mailbox) != HAL_OK) {
     
-  }else {
+  }
+  else {
     heartbeat_in_flight = 1;
   }
 }
@@ -208,10 +214,70 @@ void CAN1_RxDATA(uint8_t *RxDATA) {
   }
 }
 
-/* Received Message Callback */
+#define RPM_SIZE 6
+uint8_t SetRPM_CommandValueData[RPM_SIZE][8];
+/* 保存、读取命令数组中数据的函数 */
+volatile uint8_t SetRPM_WIndex = 0;
+volatile uint8_t SetRPM_RIndex = 0;
+uint8_t SaveCommandValue(uint8_t commandcode, uint8_t commandvalue[]) {
+  uint8_t i = 0;
+  if (commandcode == 0x01) {
+    if (!(((SetRPM_WIndex + 1) % RPM_SIZE) == SetRPM_RIndex)) {
+      for (i = 0; i < 4; i++) {
+        SetRPM_CommandValueData[SetRPM_WIndex][i] = commandvalue[i];
+      }
+      SetRPM_WIndex = (SetRPM_WIndex + 1) % RPM_SIZE;
+      return 0; // 存入成功
+    }
+  }
+  return 1; // 满
+}
+
+uint8_t ReadCommandValue(uint8_t commandcode, uint8_t commandvalue[]) {
+  uint8_t i = 0;
+  if (commandcode == 0x01) {
+    if (SetRPM_RIndex != SetRPM_WIndex) {
+      for (i = 0; i < 4; i++) {
+        commandvalue[i] = SetRPM_CommandValueData[SetRPM_RIndex][i];
+      }
+      SetRPM_RIndex = (SetRPM_RIndex + 1) % RPM_SIZE;
+      return 0; // 读取成功
+    }
+  }
+  return 1; // 空
+}
+
+volatile Event_Flat Event_Flats = {0};
+
+/* 
+  FIFO0用于接收控制命令(ID: 0x301)
+  当接收到来自主机的控制命令后 该中断回调负责
+  先将命令接收下来 
+  然后进行对命令的关键数据进行保存(保存在对应类型命令数据数组中 各个命令数据数组不混杂在一起 便于管理)
+  然后挂起事件待处理标志位(总事件 + 具体分事件 比如接收到主机的设置转速命令 那么就 总事件+1 设置转速事件+1)
+  完成后就退出中断 不长时间占用cpu
+*/
+
+/* FIFO0邮箱接收到数据 中断回调 */
 void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan) {
   if (hcan->Instance == CAN1) {
-    CAN_Frame data1 = {0};
+    CAN_Frame_Rx command_frame;
+    HAL_CAN_GetRxMessage(hcan, CAN_RX_FIFO0, &command_frame.CAN_RxHeader, command_frame.data);
+    if (command_frame.CAN_RxHeader.StdId == 0x301) {  // 检查是否是控制命令 多留一步退路 避免以后FIFO0不止用于接收控制命令
+      if (command_frame.data[0] == 0x01) {  // 设置转速命令
+        if (SaveCommandValue(0x01, command_frame.data)) {
+          Event_Flats.Error_Event++;
+          return;
+        }
+        Event_Flats.Total_Event++;
+        Event_Flats.RPM_Event++;
+      }
+    }
+  }
+}
+
+/*
+  CAN_Frame data1 = {0};
     CAN1_RxDATA(data1.data);
     data1.id = CAN1_RxHeader1.StdId;
     data1.dlc = CAN1_RxHeader1.DLC;
@@ -228,8 +294,7 @@ void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan) {
         CAN1_ACK(command_code, 0x00, command_num);
       }
     }
-  }
-}
+*/
 
 /* Txbox0 */
 void HAL_CAN_TxMailbox0CompleteCallback(CAN_HandleTypeDef *hcan) {

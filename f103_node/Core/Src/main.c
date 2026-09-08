@@ -49,7 +49,6 @@
 /* USER CODE BEGIN PV */
 
 volatile uint8_t heartbeat_in_flight = 0;
-volatile uint32_t heartbeat_mailbox;
 
 /* USER CODE END PV */
 
@@ -61,6 +60,19 @@ void SystemClock_Config(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+
+volatile static uint16_t least_rpm = 0;
+uint8_t Set_RPM(uint16_t rpm) {
+  if (rpm == least_rpm) {
+    return 2; // 目标转速重复，可以认为设置成功
+  }
+  if (0) {
+    return 0; // 设置失败
+  }
+  least_rpm = rpm;
+  HAL_GPIO_TogglePin(LED_TEST_GPIO_Port, LED_TEST_Pin);
+  return 1; // 设置成功
+}
 
 /* USER CODE END 0 */
 
@@ -109,10 +121,39 @@ int main(void)
   {
     if (((HAL_GetTick() - least_tick) >= 500) && !heartbeat_in_flight) {
       least_tick = HAL_GetTick();
-      CAN1_Heart(heart_num++);
+      CAN_Heart(heart_num++);
     }
 
-    if (heartbeat_in_flight == 1 && !HAL_CAN_IsTxMessagePending(&hcan, heartbeat_mailbox)) {
+    /* 执行控制命令 */
+    if (((HAL_GetTick() - least_tick) >= 10) && Event_Flats.Total_Event > 0) {
+      uint8_t commandcode = 0, commanddata[8], commandnum = 0;
+      if (Event_Flats.RPM_Event > 0) {
+        Event_Flats.Total_Event--;
+        Event_Flats.RPM_Event--;
+        if (ReadCommandValue(0x01, commanddata)) {
+          /* 命令空  */
+          Event_Flats.Error_Event++;
+        }
+        else {
+          uint16_t rpm = 0;
+          uint8_t status = 0;
+          commandcode = commanddata[0];
+          rpm = commanddata[1] | commanddata[2] << 8; // 小端序保存
+          commandnum = commanddata[3];
+          status = Set_RPM(rpm);
+          if (status) {
+            /* 发送应答 */
+            CAN_ACK(commandcode, 0x00, commandnum);
+          }
+          else {
+            CAN_ACK(commandcode, 0x01, commandnum);
+            Event_Flats.Error_Event++;
+          }
+        }
+      }
+    }
+
+    if (heartbeat_in_flight == 1 && !HAL_CAN_IsTxMessagePending(&hcan, CAN_Heartbeat_Frame.mailbox)) {
       heartbeat_in_flight = 0;
     }
     /* USER CODE END WHILE */
