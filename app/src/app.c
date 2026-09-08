@@ -48,11 +48,11 @@ void f103_state_transmit(void *pvParameters) {
                 F103_online_Status_count++;
             }
             else if (F103_online_Status_count >= 3) {
-                F103_online_Status_count = 0;
-                F103_Status = 0;
                 char Buffer[128];
                 sprintf(Buffer,"F103_Online");
                 HAL_UART_Transmit(&huart1, (uint8_t *)Buffer, strlen(Buffer), 1000);
+                F103_online_Status_count = 0;
+                F103_Status = 0;
             }
         }
         vTaskDelay(pdMS_TO_TICKS(1500));
