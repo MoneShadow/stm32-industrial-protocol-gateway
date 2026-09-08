@@ -7,6 +7,7 @@
 #include "semphr.h"
 
 extern QueueHandle_t queue_feedback_rpm;
+extern QueueHandle_t queue_node_state;
 extern volatile uint8_t tx_in_flight;
 
 void app(void);

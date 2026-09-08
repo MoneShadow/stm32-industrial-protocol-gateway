@@ -157,7 +157,7 @@ void CAN1_FilterBank_Init(void) {
   CAN1_FilterBank2.FilterMode = CAN_FILTERMODE_IDMASK;
   CAN1_FilterBank2.FilterFIFOAssignment = CAN_FILTER_FIFO1;
   CAN1_FilterBank2.FilterIdHigh = 0x201 << 5;
-  CAN1_FilterBank2.FilterIdLow = 0x000 << 5;
+  CAN1_FilterBank2.FilterIdLow = 0x101 << 5;
   CAN1_FilterBank2.FilterMaskIdHigh = 0x7FF << 5;
   CAN1_FilterBank2.FilterMaskIdLow = 0x7FF << 5;
   CAN1_FilterBank2.SlaveStartFilterBank = 14;
@@ -184,13 +184,13 @@ void CAN1_TxDATA(uint8_t *TxDATA, uint8_t len) {
 /* Control Frame */
 
 /* 注册一个控制转速的命令帧 */
-Ctrl_Frame register_rpm_command(uint16_t rpm, uint32_t command_num) {
-  Ctrl_Frame rpm_command = {0};
-  rpm_command.CommandHeader.RTR = CAN_RTR_DATA;
-  rpm_command.CommandHeader.IDE = CAN_ID_STD;
-  rpm_command.CommandHeader.StdId = 0x301;
-  rpm_command.CommandHeader.ExtId = 0x12345301;
-  rpm_command.CommandHeader.DLC = 8;
+CAN_Frame_Tx register_rpm_command(uint16_t rpm, uint32_t command_num) {
+  CAN_Frame_Tx rpm_command = {0};
+  rpm_command.CAN_TxHeader.RTR = CAN_RTR_DATA;
+  rpm_command.CAN_TxHeader.IDE = CAN_ID_STD;
+  rpm_command.CAN_TxHeader.StdId = 0x301;
+  rpm_command.CAN_TxHeader.ExtId = 0x12345301;
+  rpm_command.CAN_TxHeader.DLC = 8;
   rpm_command.data[0] = 0x01;                                     // rpm command_code
   rpm_command.data[1] = rpm & 0x00FF;                             // rpm Lowbytevalue
   rpm_command.data[2] = ((rpm & 0xFF00) >> 8);                    // rpm Highbytevalue
@@ -200,17 +200,15 @@ Ctrl_Frame register_rpm_command(uint16_t rpm, uint32_t command_num) {
 }
 
 /* Receive FIFO0接收反馈 */
-CAN_RxHeaderTypeDef CAN1_RxHeader1;
-void CAN1_RxDATA_FIFO0(CAN_Frame *data) {
-  if (HAL_CAN_GetRxMessage(&hcan1, CAN_RX_FIFO0, &CAN1_RxHeader1, data->data) != HAL_OK) {
-    Error_Handler();
+void CAN1_RxDATA_FIFO0(void) {
+  CAN_Frame_Rx rx_frame;
+  if (HAL_CAN_GetRxMessage(&hcan1, CAN_RX_FIFO0, &rx_frame.CAN_RxHeader, rx_frame.data) != HAL_OK) {
+    
   }
-  if (CAN1_RxHeader1.IDE == 0) {
-    if (CAN1_RxHeader1.StdId == 0x401) {  // ACK Frame
-      data->id = CAN1_RxHeader1.StdId;
-      data->dlc = CAN1_RxHeader1.DLC;
+  if (rx_frame.CAN_RxHeader.IDE == 0) {
+    if (rx_frame.CAN_RxHeader.StdId == 0x401) {  // ACK Frame
       BaseType_t pxHigherPriority = pdFALSE;
-      xQueueSendFromISR(queue_feedback_rpm, data, &pxHigherPriority);
+      xQueueSendFromISR(queue_feedback_rpm, &rx_frame, &pxHigherPriority);
       portYIELD_FROM_ISR(pxHigherPriority);
     }
   }
@@ -218,14 +216,19 @@ void CAN1_RxDATA_FIFO0(CAN_Frame *data) {
 
 /* FIFO1接收状态 */
 volatile uint32_t HeartTime = 0;
-CAN_RxHeaderTypeDef CAN1_RxHeader2;
-void CAN1_RxDATA_FIFO1(CAN_Frame *data) {
-  if (HAL_CAN_GetRxMessage(&hcan1, CAN_RX_FIFO1, &CAN1_RxHeader2, data->data) != HAL_OK) {
-    Error_Handler();
+void CAN1_RxDATA_FIFO1(void) {
+  CAN_Frame_Rx rx_frame;
+  if (HAL_CAN_GetRxMessage(&hcan1, CAN_RX_FIFO1, &rx_frame.CAN_RxHeader, rx_frame.data) != HAL_OK) {
+    
   }
-  if (CAN1_RxHeader2.IDE == 0) {
-    if (CAN1_RxHeader2.StdId == 0x201) {  // Heart Frame
+  if (rx_frame.CAN_RxHeader.IDE == 0) {
+    if (rx_frame.CAN_RxHeader.StdId == 0x201) {  // Heart Frame
       HeartTime = HAL_GetTick();
+    }
+    else if (rx_frame.CAN_RxHeader.StdId == 0x101) {
+      BaseType_t pxHigherPriority = pdFALSE;
+      xQueueSendFromISR(queue_node_state, &rx_frame, &pxHigherPriority);
+      portYIELD_FROM_ISR(pxHigherPriority);
     }
   }
 }
@@ -233,16 +236,14 @@ void CAN1_RxDATA_FIFO1(CAN_Frame *data) {
 /* FIFO0 Received Message Callback */
 void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan) {
   if (hcan->Instance == CAN1) {
-    CAN_Frame data;
-    CAN1_RxDATA_FIFO0(&data);
+    CAN1_RxDATA_FIFO0();
   }
 }
 
 /* FIFO1 Received Message Callback */
 void HAL_CAN_RxFifo1MsgPendingCallback(CAN_HandleTypeDef *hcan) {
   if (hcan->Instance == CAN1) {
-    CAN_Frame data;
-    CAN1_RxDATA_FIFO1(&data);
+    CAN1_RxDATA_FIFO1();
   }
 }
 

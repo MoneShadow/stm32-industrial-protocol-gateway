@@ -38,6 +38,7 @@ extern "C" {
 /* USER CODE BEGIN ET */
 
 extern volatile uint8_t heartbeat_in_flight;
+extern volatile uint8_t stateframe_in_flight;
 
 /* USER CODE END ET */
 
@@ -48,6 +49,18 @@ extern volatile uint8_t heartbeat_in_flight;
 
 /* Exported macro ------------------------------------------------------------*/
 /* USER CODE BEGIN EM */
+
+typedef struct {
+  uint16_t curentrpm;
+  uint16_t targetrpm;
+  uint8_t voltage;
+  uint8_t temperature;
+  uint8_t state;
+  uint8_t errorcode;
+  uint8_t statenum;
+} state;
+
+extern volatile state state_frame;
 
 /* USER CODE END EM */
 

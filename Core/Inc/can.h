@@ -42,10 +42,20 @@ typedef struct {
   uint8_t  data[8];
 } CAN_Frame;
 
+/* 发送命令帧格式 */
 typedef struct {
-  CAN_TxHeaderTypeDef CommandHeader;
-  uint8_t  data[8];
-} Ctrl_Frame;
+  CAN_TxHeaderTypeDef CAN_TxHeader;
+  uint8_t TxHeader_flat;
+  uint32_t mailbox;
+  uint8_t data[8];
+} CAN_Frame_Tx;
+
+/* 接收命令帧格式 */
+typedef struct {
+  CAN_RxHeaderTypeDef CAN_RxHeader;
+  uint8_t RxHeader_flat;
+  uint8_t data[8];
+} CAN_Frame_Rx;
 
 extern volatile uint32_t HeartTime;
 
@@ -56,11 +66,11 @@ void MX_CAN1_Init(void);
 /* USER CODE BEGIN Prototypes */
 
 void CAN1_FilterBank_Init(void);
-void CAN1_RxDATA_FIFO0(CAN_Frame *data);
-void CAN1_RxDATA_FIFO1(CAN_Frame *data);
+void CAN1_RxDATA_FIFO0(void);
+void CAN1_RxDATA_FIFO1(void);
 void CAN1_TxDATA(uint8_t *TxDATA, uint8_t len);
 void CAN1_Ctrl(uint8_t command_code, uint16_t rpm, uint32_t command_num);
-Ctrl_Frame register_rpm_command(uint16_t rpm, uint32_t command_num);
+CAN_Frame_Tx register_rpm_command(uint16_t rpm, uint32_t command_num);
 
 /* USER CODE END Prototypes */
 

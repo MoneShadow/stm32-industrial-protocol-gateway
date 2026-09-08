@@ -49,6 +49,8 @@
 /* USER CODE BEGIN PV */
 
 volatile uint8_t heartbeat_in_flight = 0;
+volatile uint8_t stateframe_in_flight = 0;
+state volatile state_frame = {0};
 
 /* USER CODE END PV */
 
@@ -72,6 +74,21 @@ uint8_t Set_RPM(uint16_t rpm) {
   least_rpm = rpm;
   HAL_GPIO_TogglePin(LED_TEST_GPIO_Port, LED_TEST_Pin);
   return 1; // 设置成功
+}
+
+uint8_t state_num = 0;
+uint8_t Get_State(void) {
+  if (0) {
+    return 1; // 获取状态失败 以后再实现
+  }
+  state_frame.curentrpm = 930;
+  state_frame.targetrpm = 1000;
+  state_frame.voltage = 240;
+  state_frame.temperature = 36;
+  state_frame.state = 0x01;
+  state_frame.errorcode = 0x00;
+  state_frame.statenum = state_num++;
+  return 0; // 获取状态成功
 }
 
 /* USER CODE END 0 */
@@ -114,18 +131,23 @@ int main(void)
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
 
-  volatile static uint32_t least_tick = 0;
+  volatile static uint32_t least_tick_heart = 0;
+  volatile static uint32_t least_tick_command = 0;
+  volatile static uint32_t least_tick_state = 0;
   volatile static uint32_t heart_num = 0;
-  least_tick =  HAL_GetTick();
+  least_tick_heart =  HAL_GetTick();
+  least_tick_command =  HAL_GetTick();
+  least_tick_state =  HAL_GetTick();
   while (1)
   {
-    if (((HAL_GetTick() - least_tick) >= 500) && !heartbeat_in_flight) {
-      least_tick = HAL_GetTick();
+    if (((HAL_GetTick() - least_tick_heart) >= 500) && !heartbeat_in_flight) {
+      least_tick_heart = HAL_GetTick();
       CAN_Heart(heart_num++);
     }
 
     /* 执行控制命令 */
-    if (((HAL_GetTick() - least_tick) >= 10) && Event_Flats.Total_Event > 0) {
+    if (((HAL_GetTick() - least_tick_command) >= 10) && Event_Flats.Total_Event > 0) {
+      least_tick_command = HAL_GetTick();
       uint8_t commandcode = 0, commanddata[8], commandnum = 0;
       if (Event_Flats.RPM_Event > 0) {
         Event_Flats.Total_Event--;
@@ -153,9 +175,20 @@ int main(void)
       }
     }
 
+    if (((HAL_GetTick() - least_tick_state) >= 5000) && !stateframe_in_flight) {
+      least_tick_state = HAL_GetTick();
+      Get_State();
+      CAN_State(state_frame);
+    }
+
     if (heartbeat_in_flight == 1 && !HAL_CAN_IsTxMessagePending(&hcan, CAN_Heartbeat_Frame.mailbox)) {
       heartbeat_in_flight = 0;
     }
+
+    if (stateframe_in_flight == 1 && !HAL_CAN_IsTxMessagePending(&hcan, CAN_State_Frame.mailbox)) {
+      stateframe_in_flight = 0;
+    }
+    
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */

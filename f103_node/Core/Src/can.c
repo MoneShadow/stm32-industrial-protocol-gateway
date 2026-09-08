@@ -154,7 +154,15 @@ void CAN1_FilterBank_Init(void) {
 /* 定义各种can帧 */
 volatile CAN_Frame_Tx CAN_Heartbeat_Frame;
 volatile CAN_Frame_Tx CAN_ACK_Frame;
+volatile CAN_Frame_Tx CAN_State_Frame;
 void CAN_Frame_Register(void) {
+  /* 从机状态帧 */
+  CAN_State_Frame.CAN_TxHeader.RTR = CAN_RTR_DATA;
+  CAN_State_Frame.CAN_TxHeader.IDE = CAN_ID_STD;
+  CAN_State_Frame.CAN_TxHeader.StdId = 0x101;
+  CAN_State_Frame.CAN_TxHeader.ExtId = 0x12345101;
+  CAN_State_Frame.CAN_TxHeader.DLC = 8;
+
   /* 从机心跳帧 */
   CAN_Heartbeat_Frame.CAN_TxHeader.RTR = CAN_RTR_DATA;
   CAN_Heartbeat_Frame.CAN_TxHeader.IDE = CAN_ID_STD;
@@ -206,11 +214,21 @@ void CAN_Heart(uint32_t heart_num) {
   }
 }
 
-/* Receive */
-CAN_RxHeaderTypeDef CAN1_RxHeader1;
-void CAN1_RxDATA(uint8_t *RxDATA) {
-  if (HAL_CAN_GetRxMessage(&hcan, CAN_RX_FIFO0, &CAN1_RxHeader1, RxDATA) != HAL_OK) {
+/* Heartbeat Frame */
+void CAN_State(state state_frame) {
+  CAN_State_Frame.data[0] = state_frame.curentrpm & 0xFF;                               // 当前转速低八位
+  CAN_State_Frame.data[1] = (state_frame.curentrpm >> 8) & 0xFF;                        // 当前转速高八位
+  CAN_State_Frame.data[2] = state_frame.targetrpm & 0xFF;                               // 目标转速低八位
+  CAN_State_Frame.data[3] = (state_frame.targetrpm >> 8) & 0xFF;                        // 目标转速高八位
+  CAN_State_Frame.data[4] = state_frame.voltage;                                        // 电压
+  CAN_State_Frame.data[5] = state_frame.temperature;                                    // 温度(暂时只表示正向温度)
+  CAN_State_Frame.data[6] = (state_frame.errorcode << 4) | (state_frame.state & 0xF);   // 低四位状态 高四位故障码
+  CAN_State_Frame.data[7] = state_frame.statenum;                                       // 状态码
+  if (HAL_CAN_AddTxMessage(&hcan, (const CAN_TxHeaderTypeDef *)&CAN_State_Frame.CAN_TxHeader, (const uint8_t *)CAN_State_Frame.data, (uint32_t *)&CAN_State_Frame.mailbox) != HAL_OK) {
     
+  }
+  else {
+    stateframe_in_flight = 1;
   }
 }
 

@@ -69,6 +69,7 @@ typedef struct {
 extern volatile Event_Flat Event_Flats;
 extern volatile CAN_Frame_Tx CAN_Heartbeat_Frame;
 extern volatile CAN_Frame_Tx CAN_ACK_Frame;
+extern volatile CAN_Frame_Tx CAN_State_Frame;
 
 /* USER CODE END Private defines */
 
@@ -78,10 +79,10 @@ void MX_CAN_Init(void);
 
 void CAN1_FilterBank_Init(void);
 void CAN_Frame_Register(void);
-void CAN1_RxDATA(uint8_t *RxDATA);
 void CAN1_TxDATA(CAN_Frame_Tx TxFrame);
 void CAN_ACK(uint8_t command_code, uint8_t res, uint32_t command_num);
 void CAN_Heart(uint32_t heart_num);
+void CAN_State(state state_frame);
 uint8_t SaveCommandValue(uint8_t commandcode, uint8_t commandvalue[]);
 uint8_t ReadCommandValue(uint8_t commandcode, uint8_t commandvalue[]);
 
