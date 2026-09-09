@@ -362,7 +362,7 @@
  * configCHECK_FOR_STACK_OVERFLOW is set to 1. See
  * https://www.freertos.org/Stacks-and-stack-overflow-checking.html  Defaults to
  * 0 if left undefined. */
-#define configCHECK_FOR_STACK_OVERFLOW        1
+#define configCHECK_FOR_STACK_OVERFLOW        2
 
 /******************************************************************************/
 /* Run time and task stats gathering related definitions. *********************/
