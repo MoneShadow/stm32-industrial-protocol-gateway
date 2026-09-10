@@ -2,12 +2,14 @@
 #include "app.h"
 #include "can.h"
 #include "usart.h"
+#include "rs485.h"
 #include <string.h>
 #include <stdio.h>
 
 QueueHandle_t queue_feedback_rpm;
 QueueHandle_t queue_ctrl_rpm_command;
 QueueHandle_t queue_node_state;
+QueueHandle_t queue_rs485_receive;
 SemaphoreHandle_t semphr_commandupdate;
 SemaphoreHandle_t semphr_f103nodestateupdate;
 
@@ -17,6 +19,49 @@ void Task1(void *pvParameters) {
     while (1) {
         HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_2);
         vTaskDelay(pdMS_TO_TICKS(5000));
+    }
+}
+
+void RS485_TestTask(void *pvParameters) {
+    while (1) {
+        uint8_t data[5] = {0x00, 0x01, 0x02, 0x03, 0x04};
+        vTaskSuspendAll();
+        RS485_SendBlocking(data, 5, HAL_MAX_DELAY);
+        xTaskResumeAll();
+        vTaskDelay(pdMS_TO_TICKS(2000));
+    }
+}
+
+void RS485_TestTask2(void *pvParameters) {
+    while (1) {
+        uint16_t pos_size[2];
+        uint8_t buffer[128];
+        xQueueReceive(queue_rs485_receive, pos_size, portMAX_DELAY);
+        for (uint8_t i = 0; i < pos_size[1]; i++) {
+            buffer[i] = dma_buffer[((pos_size[0] + 128U - pos_size[1]) + i) % 128];
+        }
+        vTaskSuspendAll();
+        for (uint16_t i = 0; i < pos_size[1]; i++) {
+            u1_prinf("%02X ", buffer[i]);
+        }
+        u1_prinf("\r\n");
+        xTaskResumeAll();
+    }
+}
+
+void RS485_TestTask3(void *pvParameters) {
+    while (1) {
+        uint16_t pos_size[2];
+        uint8_t buffer[128];
+        xQueueReceive(queue_rs485_receive, pos_size, portMAX_DELAY);
+        for (uint8_t i = 0; i < pos_size[1]; i++) {
+            buffer[i] = dma_buffer[((pos_size[0] + 128U - pos_size[1]) + i) % 128];
+        }
+        HAL_UART_AbortReceive(&huart2);
+        vTaskSuspendAll();
+        RS485_SendBlocking(buffer, pos_size[1], HAL_MAX_DELAY);
+        xTaskResumeAll();
+        RS485_ReceiveBlocking();
     }
 }
 
@@ -173,12 +218,14 @@ void app(void) {
     queue_feedback_rpm = xQueueCreate(8, sizeof(CAN_Frame_Rx));
     queue_ctrl_rpm_command = xQueueCreate(1, sizeof(CAN_Frame_Tx));
     queue_node_state = xQueueCreate(1, sizeof(CAN_Frame_Rx));
+    queue_rs485_receive = xQueueCreate(8, sizeof(uint16_t) * 2);
     semphr_commandupdate = xSemaphoreCreateBinary();
     semphr_f103nodestateupdate = xSemaphoreCreateBinary();
 
     if (HAL_CAN_Start(&hcan1) != HAL_OK) {
         Error_Handler();
     }
+    RS485_ReceiveBlocking();
 
     /* Creare Tasks */
     xTaskCreate(Ctrl_Command_Update, "Ctrl_Command_Update", 128, NULL, 2, NULL);
@@ -187,6 +234,10 @@ void app(void) {
     xTaskCreate(f103_state_transmit,    "f103_state_transmit",    256, NULL, 1, NULL);
     xTaskCreate(f103_various_states_update, "f103_various_states_update", 128, NULL, 1, NULL);
     xTaskCreate(print_f103node_state, "print_f103node_state", 128 * 12, NULL, 1, NULL);
+    
+    // xTaskCreate(RS485_TestTask, "RS485_TestTask", 128, NULL, 4, NULL);
+    // xTaskCreate(RS485_TestTask2, "RS485_TestTask2", 128 * 4, NULL, 4, NULL);
+    xTaskCreate(RS485_TestTask3, "RS485_TestTask3", 128 * 4, NULL, 4, NULL);
 
     /* Start the Schedular */
     vTaskStartScheduler();

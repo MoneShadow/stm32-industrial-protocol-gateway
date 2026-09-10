@@ -30,6 +30,7 @@ typedef struct {
 
 extern QueueHandle_t queue_feedback_rpm;
 extern QueueHandle_t queue_node_state;
+extern QueueHandle_t queue_rs485_receive;
 extern volatile uint8_t tx_in_flight;
 extern volatile Device_Model device_model;
 

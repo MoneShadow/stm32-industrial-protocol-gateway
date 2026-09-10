@@ -59,6 +59,7 @@ target_link_directories(${CMAKE_PROJECT_NAME} PRIVATE
 target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     # Add user sources here
     ${CMAKE_CURRENT_SOURCE_DIR}/app/src/app.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/bsp/src/rs485.c
 )
 
 target_sources(${CMAKE_PROJECT_NAME} PRIVATE ${FreeRTOS_Src})
@@ -70,6 +71,7 @@ target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/FreeRTOS/include
     ${CMAKE_CURRENT_SOURCE_DIR}/FreeRTOS
     ${CMAKE_CURRENT_SOURCE_DIR}/app/inc
+    ${CMAKE_CURRENT_SOURCE_DIR}/bsp/inc
 )
 
 # Add project symbols (macros)
