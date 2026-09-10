@@ -46,6 +46,11 @@
 
 /* USER CODE BEGIN PV */
 
+volatile uint8_t malloc_failed_flag = 0;
+
+TaskHandle_t volatile stack_overflow_task = NULL;
+const char * volatile stack_overflow_task_name = NULL;
+
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -152,6 +157,23 @@ void SystemClock_Config(void)
 }
 
 /* USER CODE BEGIN 4 */
+
+void vApplicationMallocFailedHook(void) {
+  malloc_failed_flag = 1;
+  taskDISABLE_INTERRUPTS();
+  while (1) {
+    __NOP();
+  }
+}
+
+void vApplicationStackOverflowHook(TaskHandle_t xTask, char *pcTaskName) {
+  stack_overflow_task = xTask;
+  stack_overflow_task_name = pcTaskName;
+  taskDISABLE_INTERRUPTS();
+  while (1) {
+    __NOP();
+  }
+}
 
 /* USER CODE END 4 */
 

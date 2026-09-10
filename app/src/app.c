@@ -9,6 +9,9 @@ QueueHandle_t queue_feedback_rpm;
 QueueHandle_t queue_ctrl_rpm_command;
 QueueHandle_t queue_node_state;
 SemaphoreHandle_t semphr_commandupdate;
+SemaphoreHandle_t semphr_f103nodestateupdate;
+
+volatile Device_Model device_model = {0};
 
 void Task1(void *pvParameters) {
     while (1) {
@@ -17,23 +20,62 @@ void Task1(void *pvParameters) {
     }
 }
 
-/* 打印接收来的从机状态 */
-void f103_various_states_transmit(void *pvParameters) {
+/* 更新接收来的从机状态 */
+void f103_various_states_update(void *pvParameters) {
     while (1) {
         CAN_Frame_Rx rxdata;
-        uint8_t uartFrame[2 + 1 + 8];
         if (xQueueReceive(queue_node_state, &rxdata, portMAX_DELAY) == pdPASS) {
-            /* UART format: ID high byte, ID low byte, DLC, DATA[8]. */
-            uartFrame[0] = (uint8_t)(rxdata.CAN_RxHeader.StdId >> 8);
-            uartFrame[1] = (uint8_t)(rxdata.CAN_RxHeader.StdId & 0xFFU);
-            uartFrame[2] = rxdata.CAN_RxHeader.DLC;
-            for (uint8_t i = 0; i < sizeof(rxdata.data); i++) {
-                uartFrame[3 + i] = rxdata.data[i];
+            device_model.ID = rxdata.CAN_RxHeader.StdId;
+            device_model.Current_RPM = (rxdata.data[1] << 8) | rxdata.data[0];
+            device_model.Target_RPM  = (rxdata.data[3] << 8) | rxdata.data[2];
+            device_model.Bus_Voltage  = rxdata.data[4] / 10;
+            device_model.Temperature  = rxdata.data[5];
+            device_model.State  = rxdata.data[6] & 0xF;
+            device_model.Fault_Code  = rxdata.data[6] >> 4;
+
+            /* 36~55 是判断是否丢失/重复状态帧判断 */
+            uint8_t current_num = rxdata.data[7];
+            device_model.State_Num_Current = current_num;
+            device_model.State_Count++;
+            if (device_model.State_Num_Valid == 0) {    // 这一块在初始化的时候是0 表示当前只有一帧有效状态帧 无法作为判断依据 后续只在f103掉线后重新置0
+                device_model.State_Num_Last = current_num;
+                device_model.State_Num_Valid = 1;
             }
-            vTaskSuspendAll();
-            HAL_UART_Transmit(&huart1, uartFrame, rxdata.CAN_RxHeader.DLC + 3, 1000);
-            xTaskResumeAll();
+            else {
+                uint8_t delta = (uint8_t)(current_num - device_model.State_Num_Last);
+                if (delta == 0) {
+                    // 重复帧 保留 暂时不做逻辑处理
+                }
+                else {
+                    if (delta > 1) {    // 出现丢失状态帧的情况
+                        device_model.Lost_Count += (uint16_t)(delta - 1);   // 丢失数量等于序号变化量-1
+                    }
+                    device_model.State_Num_Last = current_num;              // 更新上次的状态帧序号
+                }
+            }
+
+            xSemaphoreGive(semphr_f103nodestateupdate);
         }
+    }
+}
+
+/* 打印状态 */
+void print_f103node_state(void *pvParameters) {
+    while (1) {
+        xSemaphoreTake(semphr_f103nodestateupdate, portMAX_DELAY);
+        vTaskSuspendAll();
+        u1_prinf("ID: %x\r\n", device_model.ID);
+        u1_prinf("Current RPM: %u\r\n", device_model.Current_RPM);
+        u1_prinf("Target RPM: %u\r\n", device_model.Target_RPM);
+        u1_prinf("Bus Voltage: %u V\r\n", device_model.Bus_Voltage);
+        u1_prinf("Temperature: %u C\r\n", device_model.Temperature);
+        u1_prinf("State: %u\r\n", device_model.State);
+        u1_prinf("Fault Code: %u\r\n", device_model.Fault_Code);
+        u1_prinf("State Num: %u\r\n", device_model.State_Num_Current);
+        u1_prinf("State Count: %lu\r\n", device_model.State_Count);
+        u1_prinf("Lost Count: %u\r\n", device_model.Lost_Count);
+        u1_prinf("Online State: %u\r\n", device_model.Online);
+        xTaskResumeAll();
     }
 }
 
@@ -41,17 +83,13 @@ void f103_various_states_transmit(void *pvParameters) {
 void f103_feedback_transmit(void *pvParameters) {
     while (1) {
         CAN_Frame_Rx rxdata;
-        uint8_t uartFrame[2 + 1 + 8];
         if (xQueueReceive(queue_feedback_rpm, &rxdata, portMAX_DELAY) == pdPASS) {
-            /* UART format: ID high byte, ID low byte, DLC, DATA[8]. */
-            uartFrame[0] = (uint8_t)(rxdata.CAN_RxHeader.StdId >> 8);
-            uartFrame[1] = (uint8_t)(rxdata.CAN_RxHeader.StdId & 0xFFU);
-            uartFrame[2] = rxdata.CAN_RxHeader.DLC;
-            for (uint8_t i = 0; i < sizeof(rxdata.data); i++) {
-                uartFrame[3 + i] = rxdata.data[i];
-            }
             vTaskSuspendAll();
-            HAL_UART_Transmit(&huart1, uartFrame, rxdata.CAN_RxHeader.DLC + 3, 1000);
+            u1_prinf("ID: %x\r\n", rxdata.CAN_RxHeader.StdId);
+            u1_prinf("DLC: %u\r\n", rxdata.CAN_RxHeader.DLC);
+            u1_prinf("commandcode: %u\r\n", rxdata.data[0]);
+            u1_prinf("ack state: %u\r\n", rxdata.data[1]);
+            u1_prinf("ack num: %u\r\n", rxdata.data[2]);
             xTaskResumeAll();
         }
     }
@@ -63,23 +101,22 @@ volatile uint8_t F103_online_Status_count = 0;
 void f103_state_transmit(void *pvParameters) {
     while (1) {
         if (((HAL_GetTick() - HeartTime) >= 1500) && !F103_Status) {
-            F103_Status = 1;
-            char Buffer[128];
-            sprintf(Buffer,"F103_Offline");
             vTaskSuspendAll();
-            HAL_UART_Transmit(&huart1, (uint8_t *)Buffer, strlen(Buffer), 1000);
+            u1_prinf("Offline\r\n");
             xTaskResumeAll();
+            F103_Status = 1;
+            device_model.Online = 0x01;
+            device_model.State_Num_Valid = 0; // 掉线后重新计算状态帧序号
         }
         else if (((HAL_GetTick() - HeartTime) < 1500) && F103_Status) {
             if (F103_online_Status_count < 3) {
                 F103_online_Status_count++;
             }
             else if (F103_online_Status_count >= 3) {
-                char Buffer[128];
-                sprintf(Buffer,"F103_Online");
                 vTaskSuspendAll();
-                HAL_UART_Transmit(&huart1, (uint8_t *)Buffer, strlen(Buffer), 1000);
+                u1_prinf("Online\r\n");
                 xTaskResumeAll();
+                device_model.Online = 0x00;
                 F103_online_Status_count = 0;
                 F103_Status = 0;
             }
@@ -137,6 +174,7 @@ void app(void) {
     queue_ctrl_rpm_command = xQueueCreate(1, sizeof(CAN_Frame_Tx));
     queue_node_state = xQueueCreate(1, sizeof(CAN_Frame_Rx));
     semphr_commandupdate = xSemaphoreCreateBinary();
+    semphr_f103nodestateupdate = xSemaphoreCreateBinary();
 
     if (HAL_CAN_Start(&hcan1) != HAL_OK) {
         Error_Handler();
@@ -145,9 +183,10 @@ void app(void) {
     /* Creare Tasks */
     xTaskCreate(Ctrl_Command_Update, "Ctrl_Command_Update", 128, NULL, 2, NULL);
     xTaskCreate(Can_Tx_Command,      "Can_Tx_Command",      128, NULL, 3, NULL);
-    xTaskCreate(f103_feedback_transmit, "f103_feedback_transmit", 128, NULL, 1, NULL);
-    xTaskCreate(f103_state_transmit,    "f103_state_transmit",    128, NULL, 1, NULL);
-    xTaskCreate(f103_various_states_transmit,    "f103_various_states_transmit",    128, NULL, 1, NULL);
+    xTaskCreate(f103_feedback_transmit, "f103_feedback_transmit", 768, NULL, 1, NULL);
+    xTaskCreate(f103_state_transmit,    "f103_state_transmit",    256, NULL, 1, NULL);
+    xTaskCreate(f103_various_states_update, "f103_various_states_update", 128, NULL, 1, NULL);
+    xTaskCreate(print_f103node_state, "print_f103node_state", 128 * 12, NULL, 1, NULL);
 
     /* Start the Schedular */
     vTaskStartScheduler();

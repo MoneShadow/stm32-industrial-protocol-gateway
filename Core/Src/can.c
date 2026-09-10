@@ -205,11 +205,13 @@ void CAN1_RxDATA_FIFO0(void) {
   if (HAL_CAN_GetRxMessage(&hcan1, CAN_RX_FIFO0, &rx_frame.CAN_RxHeader, rx_frame.data) != HAL_OK) {
     
   }
-  if (rx_frame.CAN_RxHeader.IDE == 0) {
-    if (rx_frame.CAN_RxHeader.StdId == 0x401) {  // ACK Frame
-      BaseType_t pxHigherPriority = pdFALSE;
-      xQueueSendFromISR(queue_feedback_rpm, &rx_frame, &pxHigherPriority);
-      portYIELD_FROM_ISR(pxHigherPriority);
+  else {
+    if (rx_frame.CAN_RxHeader.IDE == 0) {
+      if (rx_frame.CAN_RxHeader.StdId == 0x401) {  // ACK Frame
+        BaseType_t pxHigherPriority = pdFALSE;
+        xQueueSendFromISR(queue_feedback_rpm, &rx_frame, &pxHigherPriority);
+        portYIELD_FROM_ISR(pxHigherPriority);
+      }
     }
   }
 }
@@ -221,14 +223,17 @@ void CAN1_RxDATA_FIFO1(void) {
   if (HAL_CAN_GetRxMessage(&hcan1, CAN_RX_FIFO1, &rx_frame.CAN_RxHeader, rx_frame.data) != HAL_OK) {
     
   }
-  if (rx_frame.CAN_RxHeader.IDE == 0) {
-    if (rx_frame.CAN_RxHeader.StdId == 0x201) {  // Heart Frame
-      HeartTime = HAL_GetTick();
-    }
-    else if (rx_frame.CAN_RxHeader.StdId == 0x101) {
-      BaseType_t pxHigherPriority = pdFALSE;
-      xQueueSendFromISR(queue_node_state, &rx_frame, &pxHigherPriority);
-      portYIELD_FROM_ISR(pxHigherPriority);
+  else {
+    if (rx_frame.CAN_RxHeader.IDE == 0) {
+      if (rx_frame.CAN_RxHeader.StdId == 0x201) {  // Heart Frame
+        HeartTime = HAL_GetTick();
+        device_model.Last_Heart_Time = HeartTime;
+      }
+      else if (rx_frame.CAN_RxHeader.StdId == 0x101) {
+        BaseType_t pxHigherPriority = pdFALSE;
+        xQueueSendFromISR(queue_node_state, &rx_frame, &pxHigherPriority);
+        portYIELD_FROM_ISR(pxHigherPriority);
+      }
     }
   }
 }

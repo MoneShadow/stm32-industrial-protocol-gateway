@@ -39,6 +39,7 @@ extern UART_HandleTypeDef huart1;
 /* USER CODE END Private defines */
 
 void MX_USART1_UART_Init(void);
+void u1_prinf(char *fmt, ...);
 
 /* USER CODE BEGIN Prototypes */
 

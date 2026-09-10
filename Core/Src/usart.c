@@ -16,6 +16,9 @@
   *
   ******************************************************************************
   */
+#include <string.h>
+#include <stdarg.h>
+#include <stdio.h>
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "usart.h"
@@ -115,6 +118,19 @@ void HAL_UART_MspDeInit(UART_HandleTypeDef* uartHandle)
 }
 
 /* USER CODE BEGIN 1 */
+
+void u1_prinf(char *fmt, ...) {
+	uint8_t tmpbuffer[128];
+	va_list ap;
+	va_start(ap, fmt);
+	vsnprintf((char *)tmpbuffer, sizeof(tmpbuffer), fmt, ap);
+	va_end(ap);
+	for (uint16_t i = 0; i < strlen((char *)tmpbuffer); i++) {
+		while(!__HAL_UART_GET_FLAG(&huart1, UART_FLAG_TXE));
+		huart1.Instance->DR = tmpbuffer[i];
+	}
+	while(!__HAL_UART_GET_FLAG(&huart1, UART_FLAG_TC));
+}
 
 /* USER CODE END 1 */
 
