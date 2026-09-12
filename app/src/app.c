@@ -3,6 +3,7 @@
 #include "can.h"
 #include "usart.h"
 #include "rs485.h"
+#include "modbus_rtu.h"
 #include <string.h>
 #include <stdio.h>
 
@@ -19,49 +20,6 @@ void Task1(void *pvParameters) {
     while (1) {
         HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_2);
         vTaskDelay(pdMS_TO_TICKS(5000));
-    }
-}
-
-void RS485_TestTask(void *pvParameters) {
-    while (1) {
-        uint8_t data[5] = {0x00, 0x01, 0x02, 0x03, 0x04};
-        vTaskSuspendAll();
-        RS485_SendBlocking(data, 5, HAL_MAX_DELAY);
-        xTaskResumeAll();
-        vTaskDelay(pdMS_TO_TICKS(2000));
-    }
-}
-
-void RS485_TestTask2(void *pvParameters) {
-    while (1) {
-        uint16_t pos_size[2];
-        uint8_t buffer[128];
-        xQueueReceive(queue_rs485_receive, pos_size, portMAX_DELAY);
-        for (uint8_t i = 0; i < pos_size[1]; i++) {
-            buffer[i] = dma_buffer[((pos_size[0] + 128U - pos_size[1]) + i) % 128];
-        }
-        vTaskSuspendAll();
-        for (uint16_t i = 0; i < pos_size[1]; i++) {
-            u1_prinf("%02X ", buffer[i]);
-        }
-        u1_prinf("\r\n");
-        xTaskResumeAll();
-    }
-}
-
-void RS485_TestTask3(void *pvParameters) {
-    while (1) {
-        uint16_t pos_size[2];
-        uint8_t buffer[128];
-        xQueueReceive(queue_rs485_receive, pos_size, portMAX_DELAY);
-        for (uint8_t i = 0; i < pos_size[1]; i++) {
-            buffer[i] = dma_buffer[((pos_size[0] + 128U - pos_size[1]) + i) % 128];
-        }
-        HAL_UART_AbortReceive(&huart2);
-        vTaskSuspendAll();
-        RS485_SendBlocking(buffer, pos_size[1], HAL_MAX_DELAY);
-        xTaskResumeAll();
-        RS485_ReceiveBlocking();
     }
 }
 
@@ -98,7 +56,6 @@ void f103_various_states_update(void *pvParameters) {
                     device_model.State_Num_Last = current_num;              // 更新上次的状态帧序号
                 }
             }
-
             xSemaphoreGive(semphr_f103nodestateupdate);
         }
     }
@@ -124,26 +81,10 @@ void print_f103node_state(void *pvParameters) {
     }
 }
 
-/* 打印接收来的从机应答 */
-void f103_feedback_transmit(void *pvParameters) {
-    while (1) {
-        CAN_Frame_Rx rxdata;
-        if (xQueueReceive(queue_feedback_rpm, &rxdata, portMAX_DELAY) == pdPASS) {
-            vTaskSuspendAll();
-            u1_prinf("ID: %x\r\n", rxdata.CAN_RxHeader.StdId);
-            u1_prinf("DLC: %u\r\n", rxdata.CAN_RxHeader.DLC);
-            u1_prinf("commandcode: %u\r\n", rxdata.data[0]);
-            u1_prinf("ack state: %u\r\n", rxdata.data[1]);
-            u1_prinf("ack num: %u\r\n", rxdata.data[2]);
-            xTaskResumeAll();
-        }
-    }
-}
-
 /* 从机在线监控 */
 volatile uint8_t F103_Status = 0;
 volatile uint8_t F103_online_Status_count = 0;
-void f103_state_transmit(void *pvParameters) {
+void f103_state_monitor(void *pvParameters) {
     while (1) {
         if (((HAL_GetTick() - HeartTime) >= 1500) && !F103_Status) {
             vTaskSuspendAll();
@@ -213,6 +154,90 @@ void Can_Tx_Command(void *pvParameters) {
     }
 }
 
+/* 打印接收来的从机应答 */
+void f103_feedback_transmit(void *pvParameters) {
+    while (1) {
+        CAN_Frame_Rx rxdata;
+        if (xQueueReceive(queue_feedback_rpm, &rxdata, portMAX_DELAY) == pdPASS) {
+            vTaskSuspendAll();
+            u1_prinf("ID: %x\r\n", rxdata.CAN_RxHeader.StdId);
+            u1_prinf("DLC: %u\r\n", rxdata.CAN_RxHeader.DLC);
+            u1_prinf("commandcode: %u\r\n", rxdata.data[0]);
+            u1_prinf("ack state: %u\r\n", rxdata.data[1]);
+            u1_prinf("ack num: %u\r\n", rxdata.data[2]);
+            xTaskResumeAll();
+        }
+    }
+}
+
+/* Modbus解析 应答 */
+void Modbus_RTU_Task(void *pvParameters) {
+    uint16_t pos_size[2];
+    uint8_t rx_buffer[128];
+    uint8_t tx_buffer[128];
+    RS485_ReceiveBlocking();
+    while (1) {
+        if (xQueueReceive(queue_rs485_receive, pos_size, portMAX_DELAY) != pdPASS) {
+            continue;
+        }
+        /* 先停止DMA，保证复制期间dma_buffer不再变化 */
+        if (HAL_UART_AbortReceive(&huart2) != HAL_OK) {
+            /* 记录接收中止失败 本轮不能贸然发送 */
+            RS485_ReceiveBlocking();
+            continue;
+        }
+        uint16_t rx_length = pos_size[1];
+        for (uint16_t i = 0; i < rx_length; i++) {
+            rx_buffer[i] = dma_buffer[((pos_size[0] + 128U - rx_length) + i) % 128U];
+        }
+        uint16_t tx_length = 0;
+        Modbus_ParseResult state = Modbus_CheckRequest(rx_buffer, rx_length);
+        if (state == MODBUS_REQUEST_OK) {
+            if (rx_buffer[1] == 0x03) {
+                state = Modbus_Parse03Request(rx_buffer);
+            }
+            else if (rx_buffer[1] == 0x06) {
+                /* 后续实现 */
+                tx_length = 0;
+            }
+            else {
+                tx_length = 0;
+            }
+
+            if (state != MODBUS_03REQUEST_OK && state != MODBUS_06REQUEST_OK) {
+                tx_length =Modbus_ErrorCode_Generate(rx_buffer,rx_length, tx_buffer, state);
+            }
+            else {
+                switch (state) {
+                case MODBUS_03REQUEST_OK:
+                    tx_length = Modbus_Handle03(rx_buffer, rx_length, tx_buffer, sizeof(tx_buffer));
+                    break;
+                case MODBUS_06REQUEST_OK:
+                    /* 后续实现 */
+                    tx_length = 0;
+                    break;
+                default:
+                    tx_length = 0;
+                    break;
+                }
+            }
+        }
+        else {
+            tx_length =Modbus_ErrorCode_Generate(rx_buffer, rx_length,tx_buffer, state);
+        }
+        /* tx_length为0表示静默丢弃或暂时没有响应 */
+        if (tx_length > 0U) {
+            if (RS485_SendBlocking(tx_buffer, tx_length, HAL_MAX_DELAY) != HAL_OK) {
+                /* 记录发送错误 */
+            }
+        }
+        /* 无论是否产生响应，最后都回到接收状态 */
+        if (RS485_ReceiveBlocking() != HAL_OK) {
+            /* 记录重新启动接收失败 */
+        }
+    }
+}
+
 void app(void) {
     /* Create A Queue for the CAN1Rx to use */
     queue_feedback_rpm = xQueueCreate(8, sizeof(CAN_Frame_Rx));
@@ -225,19 +250,17 @@ void app(void) {
     if (HAL_CAN_Start(&hcan1) != HAL_OK) {
         Error_Handler();
     }
-    RS485_ReceiveBlocking();
 
     /* Creare Tasks */
     xTaskCreate(Ctrl_Command_Update, "Ctrl_Command_Update", 128, NULL, 2, NULL);
     xTaskCreate(Can_Tx_Command,      "Can_Tx_Command",      128, NULL, 3, NULL);
+
     xTaskCreate(f103_feedback_transmit, "f103_feedback_transmit", 768, NULL, 1, NULL);
-    xTaskCreate(f103_state_transmit,    "f103_state_transmit",    256, NULL, 1, NULL);
+    xTaskCreate(f103_state_monitor,     "f103_state_monitor",     256, NULL, 1, NULL);
     xTaskCreate(f103_various_states_update, "f103_various_states_update", 128, NULL, 1, NULL);
     xTaskCreate(print_f103node_state, "print_f103node_state", 128 * 12, NULL, 1, NULL);
-    
-    // xTaskCreate(RS485_TestTask, "RS485_TestTask", 128, NULL, 4, NULL);
-    // xTaskCreate(RS485_TestTask2, "RS485_TestTask2", 128 * 4, NULL, 4, NULL);
-    xTaskCreate(RS485_TestTask3, "RS485_TestTask3", 128 * 4, NULL, 4, NULL);
+
+    xTaskCreate(Modbus_RTU_Task, "Modbus_RTU_Task", 128 * 3, NULL, 4, NULL);
 
     /* Start the Schedular */
     vTaskStartScheduler();

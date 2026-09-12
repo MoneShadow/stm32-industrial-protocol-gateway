@@ -60,6 +60,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     # Add user sources here
     ${CMAKE_CURRENT_SOURCE_DIR}/app/src/app.c
     ${CMAKE_CURRENT_SOURCE_DIR}/bsp/src/rs485.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/protocol/src/modbus_rtu.c
 )
 
 target_sources(${CMAKE_PROJECT_NAME} PRIVATE ${FreeRTOS_Src})
@@ -72,6 +73,7 @@ target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/FreeRTOS
     ${CMAKE_CURRENT_SOURCE_DIR}/app/inc
     ${CMAKE_CURRENT_SOURCE_DIR}/bsp/inc
+    ${CMAKE_CURRENT_SOURCE_DIR}/protocol/inc
 )
 
 # Add project symbols (macros)
