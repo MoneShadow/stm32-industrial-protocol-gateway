@@ -231,7 +231,7 @@ void CAN1_RxDATA_FIFO1(void) {
       }
       else if (rx_frame.CAN_RxHeader.StdId == 0x101) {
         BaseType_t pxHigherPriority = pdFALSE;
-        xQueueSendFromISR(queue_node_state, &rx_frame, &pxHigherPriority);
+        xQueueOverwriteFromISR(queue_node_state, &rx_frame, &pxHigherPriority);
         portYIELD_FROM_ISR(pxHigherPriority);
       }
     }
