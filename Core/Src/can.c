@@ -207,14 +207,15 @@ void CAN1_RxDATA_FIFO0(void) {
     
   }
   else {
-    if (rx_frame.CAN_RxHeader.IDE == 0) {
-      if (rx_frame.CAN_RxHeader.StdId == 0x401) {  // ACK Frame
-        BaseType_t pxHigherPriority = pdFALSE;
-        if (xQueueSendFromISR(queue_feedback_rpm, &rx_frame, &pxHigherPriority) != pdPASS) {
-          can_ack_queue_full_count++;
-        }
-        portYIELD_FROM_ISR(pxHigherPriority);
+    if (rx_frame.CAN_RxHeader.IDE == CAN_ID_STD &&
+        rx_frame.CAN_RxHeader.RTR == CAN_RTR_DATA &&
+        rx_frame.CAN_RxHeader.StdId == 0x401 &&
+        rx_frame.CAN_RxHeader.DLC == 3) {
+      BaseType_t pxHigherPriority = pdFALSE;
+      if (xQueueSendFromISR(queue_feedback_rpm, &rx_frame, &pxHigherPriority) != pdPASS) {
+        can_ack_queue_full_count++;
       }
+      portYIELD_FROM_ISR(pxHigherPriority);
     }
   }
 }
@@ -227,16 +228,16 @@ void CAN1_RxDATA_FIFO1(void) {
     
   }
   else {
-    if (rx_frame.CAN_RxHeader.IDE == 0) {
-      if (rx_frame.CAN_RxHeader.StdId == 0x201) {  // Heart Frame
-        HeartTime = HAL_GetTick();
-        device_model.Last_Heart_Time = HeartTime;
-      }
-      else if (rx_frame.CAN_RxHeader.StdId == 0x101) {
-        BaseType_t pxHigherPriority = pdFALSE;
-        xQueueOverwriteFromISR(queue_node_state, &rx_frame, &pxHigherPriority);
-        portYIELD_FROM_ISR(pxHigherPriority);
-      }
+    if (rx_frame.CAN_RxHeader.IDE == CAN_ID_STD && rx_frame.CAN_RxHeader.RTR == CAN_RTR_DATA && 
+        rx_frame.CAN_RxHeader.StdId == 0x201 && rx_frame.CAN_RxHeader.DLC == 2) {  // Heart Frame
+      HeartTime = HAL_GetTick();
+      device_model.Last_Heart_Time = HeartTime;
+    }
+    else if (rx_frame.CAN_RxHeader.IDE == CAN_ID_STD && rx_frame.CAN_RxHeader.RTR == CAN_RTR_DATA && 
+             rx_frame.CAN_RxHeader.StdId == 0x101 && rx_frame.CAN_RxHeader.DLC == 8) {
+      BaseType_t pxHigherPriority = pdFALSE;
+      xQueueOverwriteFromISR(queue_node_state, &rx_frame, &pxHigherPriority);
+      portYIELD_FROM_ISR(pxHigherPriority);
     }
   }
 }

@@ -280,16 +280,17 @@ volatile Event_Flat Event_Flats = {0};
 void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan) {
   if (hcan->Instance == CAN1) {
     CAN_Frame_Rx command_frame;
-    HAL_CAN_GetRxMessage(hcan, CAN_RX_FIFO0, &command_frame.CAN_RxHeader, command_frame.data);
-    if (command_frame.CAN_RxHeader.StdId == 0x301) {  // 检查是否是控制命令 多留一步退路 避免以后FIFO0不止用于接收控制命令
-      if (command_frame.data[0] == 0x01) {  // 设置转速命令
-        if (SaveCommandValue(0x01, command_frame.data)) {
-          Event_Flats.Error_Event++;
-          return;
-        }
-        Event_Flats.Total_Event++;
-        Event_Flats.RPM_Event++;
+    if (HAL_CAN_GetRxMessage(hcan, CAN_RX_FIFO0, &command_frame.CAN_RxHeader, command_frame.data) != HAL_OK) {
+      return;
+    }
+    if (command_frame.CAN_RxHeader.IDE == CAN_ID_STD && command_frame.CAN_RxHeader.RTR == CAN_RTR_DATA && 
+        command_frame.CAN_RxHeader.StdId == 0x301 && command_frame.CAN_RxHeader.DLC == 8 && command_frame.data[0] == 0x01) {
+      if (SaveCommandValue(0x01, command_frame.data)) {
+        Event_Flats.Error_Event++;
+        return;
       }
+      Event_Flats.Total_Event++;
+      Event_Flats.RPM_Event++;
     }
   }
 }
