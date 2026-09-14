@@ -142,16 +142,13 @@ void Can_Tx_Command(void *pvParameters) {
             }
             if (command.CAN_TxHeader.StdId == 0x301) {   // 控制命令
                 if (command.data[0] == 0x01) {  // 设置转速
-                    if (HAL_CAN_AddTxMessage(&hcan1, &command.CAN_TxHeader, command.data, &command.mailbox) == HAL_OK) {
-                        tx_in_flight = 1;
-                    }
-                    else {
+                    tx_in_flight = 1;
+                    if (HAL_CAN_AddTxMessage(&hcan1, &command.CAN_TxHeader, command.data, &command.mailbox) != HAL_OK) {
+                        tx_in_flight = 0;
                         vTaskDelay(pdMS_TO_TICKS(100)); // 第一次发送失败 等待100ms后重试
                         if (!F103_Status) {
-                            if (HAL_CAN_AddTxMessage(&hcan1, &command.CAN_TxHeader, command.data, &command.mailbox) == HAL_OK) {
-                                tx_in_flight = 1;
-                            }
-                            else {
+                            tx_in_flight = 1;
+                            if (HAL_CAN_AddTxMessage(&hcan1, &command.CAN_TxHeader, command.data, &command.mailbox) != HAL_OK) {
                                 tx_in_flight = 0;   // 第二次发送失败 丢弃命令
                                 continue;           // 命令发送失败 没有必要再等待ACK了 命令都没有发到从机 从机怎么可能产生反馈应答
                             }
