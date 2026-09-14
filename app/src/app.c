@@ -13,6 +13,7 @@ QueueHandle_t queue_node_state;
 QueueHandle_t queue_rs485_receive;
 SemaphoreHandle_t semphr_commandupdate;
 SemaphoreHandle_t semphr_f103nodestateupdate;
+SemaphoreHandle_t semphrmutex_uart1;
 
 volatile Device_Model device_model = {0};
 
@@ -65,7 +66,7 @@ void f103_various_states_update(void *pvParameters) {
 void print_f103node_state(void *pvParameters) {
     while (1) {
         xSemaphoreTake(semphr_f103nodestateupdate, portMAX_DELAY);
-        vTaskSuspendAll();
+        xSemaphoreTake(semphrmutex_uart1, portMAX_DELAY);
         u1_prinf("ID: %x\r\n", device_model.ID);
         u1_prinf("Current RPM: %u\r\n", device_model.Current_RPM);
         u1_prinf("Target RPM: %u\r\n", device_model.Target_RPM);
@@ -77,7 +78,7 @@ void print_f103node_state(void *pvParameters) {
         u1_prinf("State Count: %lu\r\n", device_model.State_Count);
         u1_prinf("Lost Count: %u\r\n", device_model.Lost_Count);
         u1_prinf("Online State: %u\r\n", device_model.Online);
-        xTaskResumeAll();
+        xSemaphoreGive(semphrmutex_uart1);
     }
 }
 
@@ -87,24 +88,24 @@ volatile uint8_t F103_online_Status_count = 0;
 void f103_state_monitor(void *pvParameters) {
     while (1) {
         if (((HAL_GetTick() - HeartTime) >= 1500) && !F103_Status) {
-            vTaskSuspendAll();
-            u1_prinf("Offline\r\n");
-            xTaskResumeAll();
             F103_Status = 1;
             device_model.Online = 0x01;
             device_model.State_Num_Valid = 0; // 掉线后重新计算状态帧序号
+            xSemaphoreTake(semphrmutex_uart1, portMAX_DELAY);
+            u1_prinf("Offline\r\n");
+            xSemaphoreGive(semphrmutex_uart1);
         }
         else if (((HAL_GetTick() - HeartTime) < 1500) && F103_Status) {
             if (F103_online_Status_count < 3) {
                 F103_online_Status_count++;
             }
             else if (F103_online_Status_count >= 3) {
-                vTaskSuspendAll();
-                u1_prinf("Online\r\n");
-                xTaskResumeAll();
                 device_model.Online = 0x00;
                 F103_online_Status_count = 0;
                 F103_Status = 0;
+                xSemaphoreTake(semphrmutex_uart1, portMAX_DELAY);
+                u1_prinf("Online\r\n");
+                xSemaphoreGive(semphrmutex_uart1);
             }
         }
         vTaskDelay(pdMS_TO_TICKS(1500));
@@ -180,28 +181,28 @@ void Can_Tx_Command(void *pvParameters) {
                         if (rxdata.data[1] != 0 && rxdata.data[1] != 1) {
                             continue;
                         }
-                        vTaskSuspendAll();
+                        xSemaphoreTake(semphrmutex_uart1, portMAX_DELAY);
                         u1_prinf("CommandNum: %u, RuquestRPM: %u, Outcome: %s\r\n",
-                                rxdata.data[2],
-                                (unsigned int)(command.data[1] | ((uint16_t)command.data[2] << 8)),
-                                rxdata.data[1] == 0? "PASS" : "FAIL");
-                        xTaskResumeAll();
+                            rxdata.data[2],
+                            (unsigned int)(command.data[1] | ((uint16_t)command.data[2] << 8)),
+                            rxdata.data[1] == 0? "PASS" : "FAIL");
+                        xSemaphoreGive(semphrmutex_uart1);
                         break;
                     }
                     if (TimeOut) {
                         /* ACK等待超时 停止等待并打印等待超时 */
                         TimeOut = 0;
-                        vTaskSuspendAll();
-                        u1_prinf("CommandNum: %u TimeOut\r\n", command.data[3]);
-                        xTaskResumeAll();
                         if (HAL_CAN_IsTxMessagePending(&hcan1, command.mailbox)) {
                             if (HAL_CAN_AbortTxRequest(&hcan1, command.mailbox) != HAL_OK) {
                                 /* 记录错误 */
-                                vTaskSuspendAll();
+                                xSemaphoreTake(semphrmutex_uart1, portMAX_DELAY);
                                 u1_prinf("CommandNum: %u Cancel Fail\r\n", command.data[3]);
-                                xTaskResumeAll();
+                                xSemaphoreGive(semphrmutex_uart1);
                             }
                         }
+                        xSemaphoreTake(semphrmutex_uart1, portMAX_DELAY);
+                        u1_prinf("CommandNum: %u TimeOut\r\n", command.data[3]);
+                        xSemaphoreGive(semphrmutex_uart1);
                     }
                 }
             }
@@ -285,6 +286,7 @@ void app(void) {
     queue_rs485_receive = xQueueCreate(8, sizeof(uint16_t) * 2);
     semphr_commandupdate = xSemaphoreCreateBinary();
     semphr_f103nodestateupdate = xSemaphoreCreateBinary();
+    semphrmutex_uart1 = xSemaphoreCreateMutex();
 
     if (HAL_CAN_Start(&hcan1) != HAL_OK) {
         Error_Handler();
