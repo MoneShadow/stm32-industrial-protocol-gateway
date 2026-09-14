@@ -291,8 +291,27 @@ void Modbus_RTU_Task(void *pvParameters) {
     }
 }
 
+TaskHandle_t can_tx_command;
+TaskHandle_t f103_state_monitor_handle;
+TaskHandle_t f103_state_update_handle;
+TaskHandle_t f103_state_print_handle;
+TaskHandle_t modbus_rtu_task_handle;
+
+/* 最小剩余栈空间 数组顺序：CAN发送 节点监控 状态更新 状态打印 Modbus RTU */
+volatile UBaseType_t task_stack_remaining[5] = {0};
+
+static void Stack_Monitor_Task(void *pvParameters) {
+    while (1) {
+        task_stack_remaining[0] = uxTaskGetStackHighWaterMark(can_tx_command);
+        task_stack_remaining[1] = uxTaskGetStackHighWaterMark(f103_state_monitor_handle);
+        task_stack_remaining[2] = uxTaskGetStackHighWaterMark(f103_state_update_handle);
+        task_stack_remaining[3] = uxTaskGetStackHighWaterMark(f103_state_print_handle);
+        task_stack_remaining[4] = uxTaskGetStackHighWaterMark(modbus_rtu_task_handle);
+        vTaskDelay(pdMS_TO_TICKS(5000));
+    }
+}
+
 void app(void) {
-    /* Create A Queue for the CAN1Rx to use */
     queue_feedback_rpm = xQueueCreate(8, sizeof(CAN_Frame_Rx));
     queue_ctrl_rpm_command = xQueueCreate(1, sizeof(CAN_Frame_Tx));
     queue_node_state = xQueueCreate(1, sizeof(CAN_Frame_Rx));
@@ -308,13 +327,12 @@ void app(void) {
     device_model.Online = 0x01; // 上电先默认从机离线
 
     /* Creare Tasks */
-    xTaskCreate(Can_Tx_Command,      "Can_Tx_Command",      128 * 3, NULL, 3, NULL);
-
-    xTaskCreate(f103_state_monitor,         "f103_state_monitor",         256,      NULL, 1, NULL);
-    xTaskCreate(f103_various_states_update, "f103_various_states_update", 128,      NULL, 1, NULL);
-    xTaskCreate(print_f103node_state,       "print_f103node_state",       128 * 12, NULL, 1, NULL);
-
-    xTaskCreate(Modbus_RTU_Task, "Modbus_RTU_Task", 128 * 3, NULL, 2, NULL);
+    xTaskCreate(Can_Tx_Command, "Can_Tx_Command", 128 * 3, NULL, 3, &can_tx_command);
+    xTaskCreate(f103_state_monitor, "f103_state_monitor", 256, NULL, 1, &f103_state_monitor_handle);
+    xTaskCreate(f103_various_states_update, "f103_various_states_update", 128, NULL, 1, &f103_state_update_handle);
+    xTaskCreate(print_f103node_state, "print_f103node_state", 128 * 12, NULL, 1, &f103_state_print_handle);
+    xTaskCreate(Modbus_RTU_Task, "Modbus_RTU_Task", 128 * 3, NULL, 2, &modbus_rtu_task_handle);
+    xTaskCreate(Stack_Monitor_Task, "Stack_Monitor", 128, NULL, 1, NULL);
 
     /* Start the Schedular */
     vTaskStartScheduler();
