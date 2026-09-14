@@ -121,39 +121,64 @@ void Can_Tx_Command(void *pvParameters) {
             xQueueReceive(queue_ctrl_rpm_command, &command, portMAX_DELAY);
             if (command.CAN_TxHeader.StdId == 0x301) {   // 控制命令
                 if (command.data[0] == 0x01) {  // 设置转速
-                    if (HAL_CAN_AddTxMessage(&hcan1, &command.CAN_TxHeader, command.data, &command.mailbox) != HAL_OK) {
-                        vTaskDelay(pdMS_TO_TICKS(100)); // 第一次发送失败 等待100ms后重试
-                        if (!F103_Status) {
-                            if (HAL_CAN_AddTxMessage(&hcan1, &command.CAN_TxHeader, command.data, &command.mailbox) != HAL_OK) {
-                                tx_in_flight = 0;   // 第二次发送失败 丢弃命令
-                            }
-                            else {
-                                tx_in_flight = 1;
-                            }
-                        }
+                    if (HAL_CAN_AddTxMessage(&hcan1, &command.CAN_TxHeader, command.data, &command.mailbox) == HAL_OK) {
+                        tx_in_flight = 1;
                     }
                     else {
-                        tx_in_flight = 1;
-                        /* 需要检测仲裁失败 无ACK应答 BUS——OFF等情况 暂时先搁置 */
+                        vTaskDelay(pdMS_TO_TICKS(100)); // 第一次发送失败 等待100ms后重试
+                        if (!F103_Status) {
+                            if (HAL_CAN_AddTxMessage(&hcan1, &command.CAN_TxHeader, command.data, &command.mailbox) == HAL_OK) {
+                                tx_in_flight = 1;
+                            }
+                            else {
+                                tx_in_flight = 0;   // 第二次发送失败 丢弃命令
+                                continue;           // 命令发送失败 没有必要再等待ACK了 命令都没有发到从机 从机怎么可能产生反馈应答
+                            }
+                        }
+                        else {
+                            continue; // 第二次发送等待期间从机掉线 直接退出 不应进入ACK超时判断 命令都没有发到从机 从机怎么可能产生反馈应答
+                        }
+                    }
+                    /* 无论是第一次命令发送成功还是第二次命令发送成功 都会来到这个进行ACK等待超时判断 */
+                    CAN_Frame_Rx rxdata;
+                    TickType_t start = xTaskGetTickCount();
+                    TickType_t budget = pdMS_TO_TICKS(1000);
+                    while (1) {
+                        TickType_t elapsed = xTaskGetTickCount() - start;
+                        if (elapsed >= budget) {
+                            /* ACK等待超时 停止等待并打印等待超时 */
+                            vTaskSuspendAll();
+                            u1_prinf("CommandNum: %u TimeOut\r\n", command.data[3]);
+                            xTaskResumeAll();
+                            break;
+                        }
+                        else {
+                            if (xQueueReceive(queue_feedback_rpm, &rxdata, budget - elapsed) != pdPASS) {
+                                /* ACK等待超时 停止等待并打印等待超时 */
+                                vTaskSuspendAll();
+                                u1_prinf("CommandNum: %u TimeOut\r\n", command.data[3]);
+                                xTaskResumeAll();
+                                break;
+                            }
+                        }
+                        /* 不是当前命令的合法 ACK，继续等 */
+                        if (rxdata.CAN_RxHeader.StdId != 0x401 || rxdata.CAN_RxHeader.DLC != 3 || rxdata.data[0] != command.data[0] || rxdata.data[2] != command.data[3]) {
+                            continue;
+                        }
+                        /* 协议只定义了 0：成功、1：失败 其他的ACK值是异常值 */
+                        if (rxdata.data[1] != 0 && rxdata.data[1] != 1) {
+                            continue;
+                        }
+                        vTaskSuspendAll();
+                        u1_prinf("CommandNum: %u, RuquestRPM: %u, Outcome: %s\r\n",
+                                rxdata.data[2],
+                                (unsigned int)(command.data[1] | ((uint16_t)command.data[2] << 8)),
+                                rxdata.data[1] == 0? "PASS" : "FAIL");
+                        xTaskResumeAll();
+                        break;
                     }
                 }
             }
-        }
-    }
-}
-
-/* 打印接收来的从机应答 */
-void f103_feedback_transmit(void *pvParameters) {
-    while (1) {
-        CAN_Frame_Rx rxdata;
-        if (xQueueReceive(queue_feedback_rpm, &rxdata, portMAX_DELAY) == pdPASS) {
-            vTaskSuspendAll();
-            u1_prinf("ID: %x\r\n", rxdata.CAN_RxHeader.StdId);
-            u1_prinf("DLC: %u\r\n", rxdata.CAN_RxHeader.DLC);
-            u1_prinf("commandcode: %u\r\n", rxdata.data[0]);
-            u1_prinf("ack state: %u\r\n", rxdata.data[1]);
-            u1_prinf("ack num: %u\r\n", rxdata.data[2]);
-            xTaskResumeAll();
         }
     }
 }
@@ -240,9 +265,8 @@ void app(void) {
     }
 
     /* Creare Tasks */
-    xTaskCreate(Can_Tx_Command,      "Can_Tx_Command",      128, NULL, 3, NULL);
+    xTaskCreate(Can_Tx_Command,      "Can_Tx_Command",      128 * 3, NULL, 3, NULL);
 
-    xTaskCreate(f103_feedback_transmit, "f103_feedback_transmit", 768, NULL, 1, NULL);
     xTaskCreate(f103_state_monitor,     "f103_state_monitor",     256, NULL, 1, NULL);
     xTaskCreate(f103_various_states_update, "f103_various_states_update", 128,      NULL, 1, NULL);
     xTaskCreate(print_f103node_state,       "print_f103node_state",       128 * 12, NULL, 1, NULL);

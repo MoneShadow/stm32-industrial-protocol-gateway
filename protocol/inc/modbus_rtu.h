@@ -5,6 +5,8 @@
 #define RPM_MIN 0
 #define RPM_MAX 3000
 
+extern volatile uint32_t commandnum;
+
 typedef enum {
     MODBUS_REQUEST_OK               = 0,    // 请求基础格式正确
     MODBUS_REQUEST_TOO_SHORT        = 1,    // 长度不足
