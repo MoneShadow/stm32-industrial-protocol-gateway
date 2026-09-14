@@ -12,6 +12,7 @@ typedef struct {
 
     uint16_t Current_RPM;
     uint16_t Target_RPM;
+    uint16_t Request_Target_RPM;
     uint8_t Bus_Voltage;
     uint8_t Temperature;
     uint8_t State;
@@ -31,6 +32,8 @@ typedef struct {
 extern QueueHandle_t queue_feedback_rpm;
 extern QueueHandle_t queue_node_state;
 extern QueueHandle_t queue_rs485_receive;
+extern QueueHandle_t queue_ctrl_rpm_command;
+extern SemaphoreHandle_t semphr_commandupdate;
 extern volatile uint8_t tx_in_flight;
 extern volatile Device_Model device_model;
 

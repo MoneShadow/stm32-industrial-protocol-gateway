@@ -111,18 +111,6 @@ void f103_state_monitor(void *pvParameters) {
     }
 }
 
-/* 更新命令 保持控制命令一直处于最新状态 这个更新命令的任务优先级建议高于发送命令任务 避免出现读取到正在改写的数据 */
-uint32_t commandnum = 0;
-void Ctrl_Command_Update(void *pvParameters) {
-    while (1) {
-        CAN_Frame_Tx new_command = {0};
-        new_command = register_rpm_command(1000, commandnum++);
-        xQueueOverwrite(queue_ctrl_rpm_command, &new_command);
-        xSemaphoreGive(semphr_commandupdate);
-        vTaskDelay(pdMS_TO_TICKS(1000));
-    }
-}
-
 /* 发送命令 */
 volatile uint8_t tx_in_flight = 0;
 void Can_Tx_Command(void *pvParameters) {
@@ -199,26 +187,14 @@ void Modbus_RTU_Task(void *pvParameters) {
                 state = Modbus_Parse03Request(rx_buffer, &request03);
             }
             else if (rx_buffer[1] == 0x06) {
-                tx_length = 0;
                 state = Modbus_Parse06Request(rx_buffer, &request06);
-                vTaskSuspendAll();
-                if (state == MODBUS_REQUEST_ILLEGAL_DATA_VALUE) {
-                    u1_prinf("MODBUS_REQUEST_ILLEGAL_DATA_VALUE\r\n");
-                }
-                else if (state == MODBUS_REQUEST_ILLEGAL_DATA_ADDRESS) {
-                    u1_prinf("MODBUS_REQUEST_ILLEGAL_DATA_ADDRESS\r\n");
-                }
-                else {
-                    u1_prinf("MODBUS_06REQUEST_OK\r\n register_address: 1\r\n register_value: 1000\r\n");
-                }
-                xTaskResumeAll();
             }
             else {
                 tx_length = 0;
             }
 
             if (state != MODBUS_03REQUEST_OK && state != MODBUS_06REQUEST_OK) {
-                tx_length =Modbus_ErrorCode_Generate(rx_buffer,rx_length, tx_buffer, state);
+                tx_length = Modbus_ErrorCode_Generate(rx_buffer,rx_length, tx_buffer, state);
             }
             else {
                 switch (state) {
@@ -226,8 +202,7 @@ void Modbus_RTU_Task(void *pvParameters) {
                     tx_length = Modbus_Handle03(request03, tx_buffer, sizeof(tx_buffer));
                     break;
                 case MODBUS_06REQUEST_OK:
-                    /* 后续实现 */
-                    tx_length = 0;
+                    tx_length = Modbus_Handle06(request06, tx_buffer, sizeof(tx_buffer));
                     break;
                 default:
                     tx_length = 0;
@@ -236,7 +211,7 @@ void Modbus_RTU_Task(void *pvParameters) {
             }
         }
         else {
-            tx_length =Modbus_ErrorCode_Generate(rx_buffer, rx_length,tx_buffer, state);
+            tx_length = Modbus_ErrorCode_Generate(rx_buffer, rx_length,tx_buffer, state);
         }
         /* tx_length为0表示静默丢弃或暂时没有响应 */
         if (tx_length > 0U) {
@@ -265,15 +240,14 @@ void app(void) {
     }
 
     /* Creare Tasks */
-    xTaskCreate(Ctrl_Command_Update, "Ctrl_Command_Update", 128, NULL, 2, NULL);
     xTaskCreate(Can_Tx_Command,      "Can_Tx_Command",      128, NULL, 3, NULL);
 
     xTaskCreate(f103_feedback_transmit, "f103_feedback_transmit", 768, NULL, 1, NULL);
     xTaskCreate(f103_state_monitor,     "f103_state_monitor",     256, NULL, 1, NULL);
-    xTaskCreate(f103_various_states_update, "f103_various_states_update", 128, NULL, 1, NULL);
-    xTaskCreate(print_f103node_state, "print_f103node_state", 128 * 12, NULL, 1, NULL);
+    xTaskCreate(f103_various_states_update, "f103_various_states_update", 128,      NULL, 1, NULL);
+    xTaskCreate(print_f103node_state,       "print_f103node_state",       128 * 12, NULL, 1, NULL);
 
-    xTaskCreate(Modbus_RTU_Task, "Modbus_RTU_Task", 128 * 3, NULL, 4, NULL);
+    xTaskCreate(Modbus_RTU_Task, "Modbus_RTU_Task", 128 * 3, NULL, 2, NULL);
 
     /* Start the Schedular */
     vTaskStartScheduler();

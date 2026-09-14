@@ -214,7 +214,7 @@ void CAN_Heart(uint32_t heart_num) {
   }
 }
 
-/* Heartbeat Frame */
+/* 状态回传 Frame */
 void CAN_State(state state_frame) {
   CAN_State_Frame.data[0] = state_frame.curentrpm & 0xFF;                               // 当前转速低八位
   CAN_State_Frame.data[1] = (state_frame.curentrpm >> 8) & 0xFF;                        // 当前转速高八位

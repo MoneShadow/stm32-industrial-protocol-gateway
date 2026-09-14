@@ -82,7 +82,7 @@ uint8_t Get_State(void) {
     return 1; // 获取状态失败 以后再实现
   }
   state_frame.curentrpm = 930;
-  state_frame.targetrpm = 1000;
+  state_frame.targetrpm = least_rpm;
   state_frame.voltage = 240;
   state_frame.temperature = 36;
   state_frame.state = 0x01;
