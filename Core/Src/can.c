@@ -273,5 +273,42 @@ void HAL_CAN_TxMailbox2CompleteCallback(CAN_HandleTypeDef *hcan) {
   }
 }
 
+void HAL_CAN_TxMailbox0AbortCallback(CAN_HandleTypeDef *hcan) {
+  if (hcan->Instance == CAN1) {
+    tx_in_flight = 0;
+  }
+}
+
+void HAL_CAN_TxMailbox1AbortCallback(CAN_HandleTypeDef *hcan) {
+  if (hcan->Instance == CAN1) {
+    tx_in_flight = 0;
+  }
+}
+
+void HAL_CAN_TxMailbox2AbortCallback(CAN_HandleTypeDef *hcan) {
+  if (hcan->Instance == CAN1) {
+    tx_in_flight = 0;
+  }
+}
+
+void HAL_CAN_ErrorCallback(CAN_HandleTypeDef *hcan) {
+    if (hcan->Instance != CAN1) {
+        return;
+    }
+    /* 合并所有错误 */
+    uint32_t tx_errors =
+        HAL_CAN_ERROR_TX_TERR0 |
+        HAL_CAN_ERROR_TX_TERR1 |
+        HAL_CAN_ERROR_TX_TERR2 |
+        HAL_CAN_ERROR_TX_ALST0 |
+        HAL_CAN_ERROR_TX_ALST1 |
+        HAL_CAN_ERROR_TX_ALST2;
+        /* 出现错误并且三个发送的邮箱均空闲的情况下才复位tx_in_flight */
+    if ((hcan->ErrorCode & tx_errors) != 0U &&
+        HAL_CAN_GetTxMailboxesFreeLevel(hcan) == 3U) {
+        tx_in_flight = 0;
+    }
+}
+
 /* USER CODE END 1 */
 

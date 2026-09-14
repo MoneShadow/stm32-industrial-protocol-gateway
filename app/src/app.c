@@ -157,21 +157,18 @@ void Can_Tx_Command(void *pvParameters) {
                     CAN_Frame_Rx rxdata;
                     TickType_t start = xTaskGetTickCount();
                     TickType_t budget = pdMS_TO_TICKS(1000);
+                    uint8_t TimeOut = 0;
                     while (1) {
                         TickType_t elapsed = xTaskGetTickCount() - start;
                         if (elapsed >= budget) {
-                            /* ACK等待超时 停止等待并打印等待超时 */
-                            vTaskSuspendAll();
-                            u1_prinf("CommandNum: %u TimeOut\r\n", command.data[3]);
-                            xTaskResumeAll();
+                            /* ACK等待超时 */
+                            TimeOut = 1;
                             break;
                         }
                         else {
                             if (xQueueReceive(queue_feedback_rpm, &rxdata, budget - elapsed) != pdPASS) {
-                                /* ACK等待超时 停止等待并打印等待超时 */
-                                vTaskSuspendAll();
-                                u1_prinf("CommandNum: %u TimeOut\r\n", command.data[3]);
-                                xTaskResumeAll();
+                                /* ACK等待超时 */
+                                TimeOut = 1;
                                 break;
                             }
                         }
@@ -190,6 +187,21 @@ void Can_Tx_Command(void *pvParameters) {
                                 rxdata.data[1] == 0? "PASS" : "FAIL");
                         xTaskResumeAll();
                         break;
+                    }
+                    if (TimeOut) {
+                        /* ACK等待超时 停止等待并打印等待超时 */
+                        TimeOut = 0;
+                        vTaskSuspendAll();
+                        u1_prinf("CommandNum: %u TimeOut\r\n", command.data[3]);
+                        xTaskResumeAll();
+                        if (HAL_CAN_IsTxMessagePending(&hcan1, command.mailbox)) {
+                            if (HAL_CAN_AbortTxRequest(&hcan1, command.mailbox) != HAL_OK) {
+                                /* 记录错误 */
+                                vTaskSuspendAll();
+                                u1_prinf("CommandNum: %u Cancel Fail\r\n", command.data[3]);
+                                xTaskResumeAll();
+                            }
+                        }
                     }
                 }
             }
