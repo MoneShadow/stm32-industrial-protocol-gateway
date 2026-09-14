@@ -29,6 +29,7 @@ void f103_various_states_update(void *pvParameters) {
     while (1) {
         CAN_Frame_Rx rxdata;
         if (xQueueReceive(queue_node_state, &rxdata, portMAX_DELAY) == pdPASS) {
+            taskENTER_CRITICAL();
             device_model.ID = rxdata.CAN_RxHeader.StdId;
             device_model.Current_RPM = (rxdata.data[1] << 8) | rxdata.data[0];
             device_model.Target_RPM  = (rxdata.data[3] << 8) | rxdata.data[2];
@@ -37,7 +38,7 @@ void f103_various_states_update(void *pvParameters) {
             device_model.State  = rxdata.data[6] & 0xF;
             device_model.Fault_Code  = rxdata.data[6] >> 4;
 
-            /* 36~55 是判断是否丢失/重复状态帧判断 */
+            /* 判断是否丢失/重复状态帧判断 */
             uint8_t current_num = rxdata.data[7];
             device_model.State_Num_Current = current_num;
             device_model.State_Count++;
@@ -57,6 +58,7 @@ void f103_various_states_update(void *pvParameters) {
                     device_model.State_Num_Last = current_num;              // 更新上次的状态帧序号
                 }
             }
+            taskEXIT_CRITICAL();
             xSemaphoreGive(semphr_f103nodestateupdate);
         }
     }
@@ -66,18 +68,22 @@ void f103_various_states_update(void *pvParameters) {
 void print_f103node_state(void *pvParameters) {
     while (1) {
         xSemaphoreTake(semphr_f103nodestateupdate, portMAX_DELAY);
+        Device_Model snapshot = {0};
+        taskENTER_CRITICAL();
+        snapshot = device_model;
+        taskEXIT_CRITICAL();
         xSemaphoreTake(semphrmutex_uart1, portMAX_DELAY);
-        u1_prinf("ID: %x\r\n", device_model.ID);
-        u1_prinf("Current RPM: %u\r\n", device_model.Current_RPM);
-        u1_prinf("Target RPM: %u\r\n", device_model.Target_RPM);
-        u1_prinf("Bus Voltage: %u V\r\n", device_model.Bus_Voltage);
-        u1_prinf("Temperature: %u C\r\n", device_model.Temperature);
-        u1_prinf("State: %u\r\n", device_model.State);
-        u1_prinf("Fault Code: %u\r\n", device_model.Fault_Code);
-        u1_prinf("State Num: %u\r\n", device_model.State_Num_Current);
-        u1_prinf("State Count: %lu\r\n", device_model.State_Count);
-        u1_prinf("Lost Count: %u\r\n", device_model.Lost_Count);
-        u1_prinf("Online State: %u\r\n", device_model.Online);
+        u1_prinf("ID: %x\r\n", snapshot.ID);
+        u1_prinf("Current RPM: %u\r\n", snapshot.Current_RPM);
+        u1_prinf("Target RPM: %u\r\n", snapshot.Target_RPM);
+        u1_prinf("Bus Voltage: %u V\r\n", snapshot.Bus_Voltage);
+        u1_prinf("Temperature: %u C\r\n", snapshot.Temperature);
+        u1_prinf("State: %u\r\n", snapshot.State);
+        u1_prinf("Fault Code: %u\r\n", snapshot.Fault_Code);
+        u1_prinf("State Num: %u\r\n", snapshot.State_Num_Current);
+        u1_prinf("State Count: %lu\r\n", snapshot.State_Count);
+        u1_prinf("Lost Count: %u\r\n", snapshot.Lost_Count);
+        u1_prinf("Online State: %u\r\n", snapshot.Online);
         xSemaphoreGive(semphrmutex_uart1);
     }
 }
