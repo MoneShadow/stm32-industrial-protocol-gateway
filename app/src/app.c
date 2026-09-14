@@ -89,7 +89,7 @@ void print_f103node_state(void *pvParameters) {
 }
 
 /* 从机在线监控 */
-volatile uint8_t F103_Status = 0;
+volatile uint8_t F103_Status = 1;
 volatile uint8_t F103_online_Status_count = 0;
 void f103_state_monitor(void *pvParameters) {
     uint32_t last_hreattime = 0, current_hearttime = 0;
@@ -300,6 +300,8 @@ void app(void) {
     if (HAL_CAN_Start(&hcan1) != HAL_OK) {
         Error_Handler();
     }
+
+    device_model.Online = 0x01; // 上电先默认从机离线
 
     /* Creare Tasks */
     xTaskCreate(Can_Tx_Command,      "Can_Tx_Command",      128 * 3, NULL, 3, NULL);
