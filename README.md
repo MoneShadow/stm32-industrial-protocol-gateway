@@ -55,6 +55,29 @@ Modbus `0x06` 的正常回显表示 F407 已接受写入请求并登记控制命
 
 CAN 总线两端需要正确终端匹配，并保证两个节点共地。下载和调试使用外部 ST-Link，F407 与 F103 分别烧录各自的 ELF 文件。
 
+## 实物展示
+
+以下为项目实际联调使用的硬件。全景中包含 F407 网关、F103 模拟节点、CAN 收发器、RS485 通信模块以及 USB 调试连接；当前采用模块与跳线搭建，尚未设计专用 PCB。
+
+<img src="docs/images/hardware-overview.jpg" alt="STM32F407 与 STM32F103 工业协议网关实物连接全景" width="720">
+
+<details>
+<summary>展开查看 CAN 与 RS485 模块近照</summary>
+
+### CAN 收发器
+
+SN65HVD230 模块连接 MCU 的 CAN TX/RX 与总线 CANH/CANL。
+
+<img src="docs/images/can-transceiver.jpg" alt="SN65HVD230 CAN 收发器模块连接近照" width="480">
+
+### RS485 收发器
+
+MAX3485 模块连接 USART2，并由 PD4 控制 DE/RE 方向；总线 A/B 接至 PC 侧 USB-RS485。
+
+<img src="docs/images/rs485-transceiver.jpg" alt="MAX3485 RS485 收发器模块连接近照" width="480">
+
+</details>
+
 ## CAN 应用协议
 
 项目使用标准 11-bit CAN ID，Node ID 固定为 1。
@@ -213,6 +236,30 @@ CRC 错误以及非本机地址请求会被静默丢弃。当前实现支持以�
 - USART1 日志与 Modbus 请求并发运行。
 - FreeRTOS 任务栈余量检查。
 
+## 运行演示
+
+以下 GIF 为实际硬件联调录屏，可点击对应链接查看原始动画。串口工具左侧用于发送 Modbus 请求，右侧用于观察 F407 的 USART1 调试日志。
+
+### 核心功能：Modbus 写入到 CAN 控制闭环
+
+录屏展示调试器中的 Device Model，以及连续写入不同目标转速的过程。F407 将合法 Modbus `0x06` 请求转换为 CAN 控制命令，F103 执行后返回 ACK；日志中的 `RequestRPM` 与 `Outcome: PASS` 表示匹配到了对应命令的成功应答，后续状态帧中的 `Target RPM` 可验证设备保存的目标值。
+
+实际转速 `Current RPM` 当前为固定模拟值，不用于表示真实电机的动态响应。Modbus 请求回显和下位机执行成功仍是两个独立阶段。
+
+![Modbus 写入目标转速、CAN 命令 ACK 与设备状态更新演示](docs/images/modbus-control-demo.gif)
+
+[查看核心功能原始 GIF](docs/images/modbus-control-demo.gif)
+
+### 故障恢复：CAN 断线与重新上线
+
+测试过程中断开并恢复 CAN 通信。F407 在心跳超时后输出 `Offline`，恢复通信并满足连续新心跳条件后输出 `Online`，随后继续接收设备状态。日志中的 `Online State` 使用 **0 在线、1 离线** 的项目约定；离线期间保留的状态量是最后一次收到的值，不代表设备仍在线。
+
+本演示对应当前模块接线和测试条件下的断线恢复，不代表已经覆盖全部 CAN Bus-Off 故障。
+
+![CAN 通信断开后离线、恢复连接后重新上线演示](docs/images/can-offline-recovery.gif)
+
+[查看故障恢复原始 GIF](docs/images/can-offline-recovery.gif)
+
 ## 构建
 
 依赖：
@@ -253,6 +300,7 @@ FreeRTOS/              FreeRTOS Kernel
 Drivers/               STM32F4 HAL 与 CMSIS
 f103_node/             STM32F103 模拟 CAN 节点独立工程
 cmake/                 F407 工具链与 CubeMX CMake 配置
+docs/images/           实物照片与功能、故障恢复 GIF
 ```
 
 ## 已知限制
