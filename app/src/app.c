@@ -92,20 +92,25 @@ void print_f103node_state(void *pvParameters) {
 volatile uint8_t F103_Status = 0;
 volatile uint8_t F103_online_Status_count = 0;
 void f103_state_monitor(void *pvParameters) {
+    uint32_t last_hreattime = 0, current_hearttime = 0;
     while (1) {
-        if (((HAL_GetTick() - HeartTime) >= 1500) && !F103_Status) {
-            F103_Status = 1;
-            device_model.Online = 0x01;
-            device_model.State_Num_Valid = 0; // 掉线后重新计算状态帧序号
-            xSemaphoreTake(semphrmutex_uart1, portMAX_DELAY);
-            u1_prinf("Offline\r\n");
-            xSemaphoreGive(semphrmutex_uart1);
+        current_hearttime = HeartTime;
+        if (((HAL_GetTick() - current_hearttime) >= 1500)) {
+            F103_online_Status_count = 0;
+            if (!F103_Status) {
+                F103_Status = 1;
+                device_model.Online = 0x01;
+                device_model.State_Num_Valid = 0; // 掉线后重新计算状态帧序号
+                xSemaphoreTake(semphrmutex_uart1, portMAX_DELAY);
+                u1_prinf("Offline\r\n");
+                xSemaphoreGive(semphrmutex_uart1);
+            }
         }
-        else if (((HAL_GetTick() - HeartTime) < 1500) && F103_Status) {
+        else if (((HAL_GetTick() - current_hearttime) < 1500) && F103_Status && current_hearttime != last_hreattime) {
             if (F103_online_Status_count < 3) {
                 F103_online_Status_count++;
             }
-            else if (F103_online_Status_count >= 3) {
+            if (F103_online_Status_count >= 3) {
                 device_model.Online = 0x00;
                 F103_online_Status_count = 0;
                 F103_Status = 0;
@@ -114,7 +119,8 @@ void f103_state_monitor(void *pvParameters) {
                 xSemaphoreGive(semphrmutex_uart1);
             }
         }
-        vTaskDelay(pdMS_TO_TICKS(1500));
+        last_hreattime = current_hearttime;
+        vTaskDelay(pdMS_TO_TICKS(100));
     }
 }
 
