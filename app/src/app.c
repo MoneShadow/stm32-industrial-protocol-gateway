@@ -116,9 +116,23 @@ volatile uint8_t tx_in_flight = 0;
 void Can_Tx_Command(void *pvParameters) {
     while (1) {
         xSemaphoreTake(semphr_commandupdate, portMAX_DELAY);
+        /* 当前不具备提交下一条控制帧的条件 */
+        while (HAL_CAN_GetTxMailboxesFreeLevel(&hcan1) == 0 || tx_in_flight != 0) {
+            if (F103_Status) {  // 如果从机离线 退出CAN忙碌检查 因为即使检查到CAN空闲 也无法发送控制命令
+                break;
+            }
+            /* 延时后重新检查 */
+            vTaskDelay(pdMS_TO_TICKS(10));
+        }
+        if (F103_Status) {  // 如果从机离线 清空控制命令队列 防止从机一上线就执行旧命令
+            xQueueReset(queue_ctrl_rpm_command);
+            continue;
+        }
         if ((HAL_CAN_GetTxMailboxesFreeLevel(&hcan1) != 0) && !tx_in_flight && !F103_Status) {
             CAN_Frame_Tx command = {0};
-            xQueueReceive(queue_ctrl_rpm_command, &command, portMAX_DELAY);
+            if (xQueueReceive(queue_ctrl_rpm_command, &command, 0) != pdPASS) {
+                continue;   // 这里改为不阻塞取命令 如果没有命令则跳出当次循环 重新等待更新信号
+            }
             if (command.CAN_TxHeader.StdId == 0x301) {   // 控制命令
                 if (command.data[0] == 0x01) {  // 设置转速
                     if (HAL_CAN_AddTxMessage(&hcan1, &command.CAN_TxHeader, command.data, &command.mailbox) == HAL_OK) {
