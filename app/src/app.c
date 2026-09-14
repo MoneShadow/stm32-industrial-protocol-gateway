@@ -84,6 +84,7 @@ void print_f103node_state(void *pvParameters) {
         u1_prinf("State Count: %lu\r\n", snapshot.State_Count);
         u1_prinf("Lost Count: %u\r\n", snapshot.Lost_Count);
         u1_prinf("Online State: %u\r\n", snapshot.Online);
+        u1_prinf("ACK Lose: %u\r\n", can_ack_queue_full_count);
         xSemaphoreGive(semphrmutex_uart1);
     }
 }

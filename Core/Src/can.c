@@ -200,6 +200,7 @@ CAN_Frame_Tx register_rpm_command(uint16_t rpm, uint32_t command_num) {
 }
 
 /* Receive FIFO0接收反馈 */
+volatile uint32_t can_ack_queue_full_count = 0;
 void CAN1_RxDATA_FIFO0(void) {
   CAN_Frame_Rx rx_frame;
   if (HAL_CAN_GetRxMessage(&hcan1, CAN_RX_FIFO0, &rx_frame.CAN_RxHeader, rx_frame.data) != HAL_OK) {
@@ -209,7 +210,9 @@ void CAN1_RxDATA_FIFO0(void) {
     if (rx_frame.CAN_RxHeader.IDE == 0) {
       if (rx_frame.CAN_RxHeader.StdId == 0x401) {  // ACK Frame
         BaseType_t pxHigherPriority = pdFALSE;
-        xQueueSendFromISR(queue_feedback_rpm, &rx_frame, &pxHigherPriority);
+        if (xQueueSendFromISR(queue_feedback_rpm, &rx_frame, &pxHigherPriority) != pdPASS) {
+          can_ack_queue_full_count++;
+        }
         portYIELD_FROM_ISR(pxHigherPriority);
       }
     }

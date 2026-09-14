@@ -58,6 +58,7 @@ typedef struct {
 } CAN_Frame_Rx;
 
 extern volatile uint32_t HeartTime;
+extern volatile uint32_t can_ack_queue_full_count;
 
 /* USER CODE END Private defines */
 
