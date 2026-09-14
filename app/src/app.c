@@ -175,6 +175,8 @@ void Modbus_RTU_Task(void *pvParameters) {
     uint16_t pos_size[2];
     uint8_t rx_buffer[128];
     uint8_t tx_buffer[128];
+    Modbus_03_Request request03 = {0};
+    Modbus_06_Request request06 = {0};
     RS485_ReceiveBlocking();
     while (1) {
         if (xQueueReceive(queue_rs485_receive, pos_size, portMAX_DELAY) != pdPASS) {
@@ -194,11 +196,22 @@ void Modbus_RTU_Task(void *pvParameters) {
         Modbus_ParseResult state = Modbus_CheckRequest(rx_buffer, rx_length);
         if (state == MODBUS_REQUEST_OK) {
             if (rx_buffer[1] == 0x03) {
-                state = Modbus_Parse03Request(rx_buffer);
+                state = Modbus_Parse03Request(rx_buffer, &request03);
             }
             else if (rx_buffer[1] == 0x06) {
-                /* 后续实现 */
                 tx_length = 0;
+                state = Modbus_Parse06Request(rx_buffer, &request06);
+                vTaskSuspendAll();
+                if (state == MODBUS_REQUEST_ILLEGAL_DATA_VALUE) {
+                    u1_prinf("MODBUS_REQUEST_ILLEGAL_DATA_VALUE\r\n");
+                }
+                else if (state == MODBUS_REQUEST_ILLEGAL_DATA_ADDRESS) {
+                    u1_prinf("MODBUS_REQUEST_ILLEGAL_DATA_ADDRESS\r\n");
+                }
+                else {
+                    u1_prinf("MODBUS_06REQUEST_OK\r\n register_address: 1\r\n register_value: 1000\r\n");
+                }
+                xTaskResumeAll();
             }
             else {
                 tx_length = 0;
@@ -210,7 +223,7 @@ void Modbus_RTU_Task(void *pvParameters) {
             else {
                 switch (state) {
                 case MODBUS_03REQUEST_OK:
-                    tx_length = Modbus_Handle03(rx_buffer, rx_length, tx_buffer, sizeof(tx_buffer));
+                    tx_length = Modbus_Handle03(request03, tx_buffer, sizeof(tx_buffer));
                     break;
                 case MODBUS_06REQUEST_OK:
                     /* 后续实现 */

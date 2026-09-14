@@ -44,22 +44,20 @@ Modbus_ParseResult Modbus_CheckRequest(const uint8_t *frame, uint16_t frame_leng
     return MODBUS_REQUEST_OK;                   // 请求格式正确
 }
 
-Modbus_ParseResult Modbus_Parse03Request(const uint8_t *frame) {
-    uint16_t start_address = frame[2] << 8 | frame[3];
-    uint16_t quantity = frame[4] << 8 | frame[5];
-    if (quantity == 0 || quantity > 125) {                      // 请求寄存器数量超过modbus协议或为0
+Modbus_ParseResult Modbus_Parse03Request(const uint8_t *frame, Modbus_03_Request *request) {
+    request->start_address = frame[2] << 8 | frame[3];
+    request->quantity = frame[4] << 8 | frame[5];
+    if (request->quantity == 0 || request->quantity > 125) {                                // 请求寄存器数量超过modbus协议或为0
         return MODBUS_REQUEST_ILLEGAL_DATA_VALUE;
     }
-    if (start_address >= 8 || quantity > 8 - start_address) {   // 起始地址超过了设备中最后一位寄存器地址 或 数量超过了从起始地址开始到最后一位寄存器的数量
+    if (request->start_address >= 8 || request->quantity > 8 - request->start_address) {    // 起始地址超过了设备中最后一位寄存器地址 或 数量超过了从起始地址开始到最后一位寄存器的数量
         return MODBUS_REQUEST_ILLEGAL_DATA_ADDRESS;
     }
     return MODBUS_03REQUEST_OK;
 }
 
-uint16_t Modbus_Handle03(const uint8_t *request_frame, uint16_t request_length, uint8_t *response_frame, uint16_t response_capacity) {
+uint16_t Modbus_Handle03(Modbus_03_Request request, uint8_t *response_frame, uint16_t response_capacity) {
     /* 进入这个函数，默认本次modbus帧数据正常 */
-    uint16_t start_address = request_frame[2] << 8 | request_frame[3];
-    uint16_t quantity = request_frame[4] << 8 | request_frame[5];
     /* 一次性取得Device Model快照 */
     Device_Model snapshot;
     taskENTER_CRITICAL();
@@ -76,7 +74,7 @@ uint16_t Modbus_Handle03(const uint8_t *request_frame, uint16_t request_length, 
         snapshot.Online,         // 地址6：40007
         snapshot.Lost_Count      // 地址7：40008
     };
-    uint16_t required_length = 5 + quantity * 2;
+    uint16_t required_length = 5 + request.quantity * 2;
     if (response_capacity < required_length) {
         return 0;
     }
@@ -84,10 +82,10 @@ uint16_t Modbus_Handle03(const uint8_t *request_frame, uint16_t request_length, 
     /* Modbus响应头 */
     response_frame[index++] = 0x01;  // 从机地址
     response_frame[index++] = 0x03;  // 功能码
-    response_frame[index++] = (uint8_t)(quantity * 2);  // 数据字节数 一个保持寄存器是uint16类型 也就是占用两个字节
+    response_frame[index++] = (uint8_t)(request.quantity * 2);  // 数据字节数 一个保持寄存器是uint16类型 也就是占用两个字节
     /* 按起始地址和数量读取寄存器 */
-    for (uint16_t i = 0; i < quantity; i++) {
-        uint16_t register_address = start_address + i;
+    for (uint16_t i = 0; i < request.quantity; i++) {
+        uint16_t register_address = request.start_address + i;
         uint16_t value = holding_registers[register_address];
         /* Modbus寄存器数据：高字节在前 */
         response_frame[index++] = (uint8_t)((value >> 8) & 0xFF);
@@ -101,26 +99,38 @@ uint16_t Modbus_Handle03(const uint8_t *request_frame, uint16_t request_length, 
     return index;
 }
 
+Modbus_ParseResult Modbus_Parse06Request(const uint8_t *frame, Modbus_06_Request *request) {
+    request->register_address = frame[2] << 8 | frame[3];                           // 要写入的寄存器地址
+    request->register_value = frame[4] << 8 | frame[5];                             // 要写入的值
+    if (request->register_value < RPM_MIN || request->register_value > RPM_MAX) {   // 非法写值
+        return MODBUS_REQUEST_ILLEGAL_DATA_VALUE;
+    }
+if (request->register_address != 1) {                                               // 非法写入寄存器
+        return MODBUS_REQUEST_ILLEGAL_DATA_ADDRESS;
+    }
+    return MODBUS_06REQUEST_OK;
+}
+
 uint16_t Modbus_ErrorCode_Generate(const uint8_t *request_frame, uint16_t request_length, uint8_t *response_frame, Modbus_ParseResult state) {
     uint16_t index = 0;
     if (request_length > 1) {
         if (request_frame[1] == 0x03) {
-        index = 0;
-        response_frame[index++] = request_frame[0];
-        response_frame[index++] = request_frame[1] | 0x80;
-        switch (state) {
-            case MODBUS_REQUEST_LENGTH_ERROR:
-                response_frame[index++] = ILLEGAL_DATA_VALUE;
-                break;
-            case MODBUS_REQUEST_ILLEGAL_DATA_ADDRESS:
-                response_frame[index++] = ILLEGAL_DATA_ADDRESS;
-                break;
-            case MODBUS_REQUEST_ILLEGAL_DATA_VALUE:
-                response_frame[index++] = ILLEGAL_DATA_VALUE;
-                break;
-            default:
-                index = 0;
-                break;
+            index = 0;
+            response_frame[index++] = request_frame[0];
+            response_frame[index++] = request_frame[1] | 0x80;
+            switch (state) {
+                case MODBUS_REQUEST_LENGTH_ERROR:
+                    response_frame[index++] = ILLEGAL_DATA_VALUE;
+                    break;
+                case MODBUS_REQUEST_ILLEGAL_DATA_ADDRESS:
+                    response_frame[index++] = ILLEGAL_DATA_ADDRESS;
+                    break;
+                case MODBUS_REQUEST_ILLEGAL_DATA_VALUE:
+                    response_frame[index++] = ILLEGAL_DATA_VALUE;
+                    break;
+                default:
+                    index = 0;
+                    break;
         }
         }
         else if (request_frame[1] == 0x06) {
