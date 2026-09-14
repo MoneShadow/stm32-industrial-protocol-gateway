@@ -92,7 +92,7 @@ void print_f103node_state(void *pvParameters) {
 volatile uint8_t F103_Status = 1;
 volatile uint8_t F103_online_Status_count = 0;
 void f103_state_monitor(void *pvParameters) {
-    uint32_t last_hreattime = 0, current_hearttime = 0;
+    uint32_t last_hearttime = 0, current_hearttime = 0;
     while (1) {
         current_hearttime = HeartTime;
         if (((HAL_GetTick() - current_hearttime) >= 1500)) {
@@ -106,7 +106,10 @@ void f103_state_monitor(void *pvParameters) {
                 xSemaphoreGive(semphrmutex_uart1);
             }
         }
-        else if (((HAL_GetTick() - current_hearttime) < 1500) && F103_Status && current_hearttime != last_hreattime) {
+        else if (((HAL_GetTick() - current_hearttime) < 1500) && F103_Status && current_hearttime != last_hearttime) {
+            if (last_hearttime != 0 && (current_hearttime - last_hearttime) >= 1500U) {
+                F103_online_Status_count = 0;
+            }
             if (F103_online_Status_count < 3) {
                 F103_online_Status_count++;
             }
@@ -119,7 +122,7 @@ void f103_state_monitor(void *pvParameters) {
                 xSemaphoreGive(semphrmutex_uart1);
             }
         }
-        last_hreattime = current_hearttime;
+        last_hearttime = current_hearttime;
         vTaskDelay(pdMS_TO_TICKS(100));
     }
 }
@@ -306,7 +309,7 @@ void app(void) {
     /* Creare Tasks */
     xTaskCreate(Can_Tx_Command,      "Can_Tx_Command",      128 * 3, NULL, 3, NULL);
 
-    xTaskCreate(f103_state_monitor,     "f103_state_monitor",     256, NULL, 1, NULL);
+    xTaskCreate(f103_state_monitor,         "f103_state_monitor",         256,      NULL, 1, NULL);
     xTaskCreate(f103_various_states_update, "f103_various_states_update", 128,      NULL, 1, NULL);
     xTaskCreate(print_f103node_state,       "print_f103node_state",       128 * 12, NULL, 1, NULL);
 
